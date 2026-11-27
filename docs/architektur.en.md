@@ -65,7 +65,7 @@ Config flow (access_id, access_secret, region)
 | `coordinator.py` | `DataUpdateCoordinator[dict[str, TuyaDevice]]`, device mapping, 60 s shadow refresh, stale devices→unavailable, errors→repairs/reauth |
 | `entity.py` | `TuyaProjectCloudEntity` (DPS) and `TuyaShadowEntity` (shadow): `device_info`, `unique_id`, `available` |
 | `switch.py`, `sensor.py`, `light.py`, `climate.py`, `cover.py`, `number.py`, `camera.py` | Dynamic entities from DPS and shadow codes or HLS stream |
-| `stream_proxy.py` | Local HLS reverse proxy: opaque tokens, rewrite of key/segment URLs, TTL caches, HA views and route cleanup on unload |
+| `stream_proxy.py` | Local HLS reverse proxy: opaque tokens, rewrite of key/segment URLs, TTL caches, HA views and removal of all token routes and proxy state on unload |
 | `diagnostics.py` | Redaction of token/secret/`local_key`/stream URL/`m3u8`; shadow codes only, no values |
 | `repairs.py` | Auth, region, API and IoT Core authorization issues |
 | `strings.json`, `translations/{de,en}.json` | UI texts and repair descriptions |
