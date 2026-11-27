@@ -10,7 +10,7 @@
 - Fehler und Repairs nutzen vollständig lokalisierte Sätze statt englischer Rohmeldungen. Auch andere Befehlsfehler als Code 1106 werden als verständlicher `HomeAssistantError` gemeldet; Debug-Logs behalten Fehlercodes, aber keine sensiblen Rohtexte.
 - Die Kamera folgt jetzt derselben Verfügbarkeitslogik wie die übrigen Plattformen; die Stream-URL wird weiterhin nie gespeichert oder protokolliert. Regionsnamen vermeiden doppelte Klammern, Geräte ohne Namen erhalten einen freundlichen Platzhalter statt der internen ID.
 - Alle Plattformen deklarieren `PARALLEL_UPDATES`. Die Mindestversion steigt auf Home Assistant 2025.8.0, weil `OptionsFlowWithReload` dort eingeführt wurde.
-- Qualität: 108 Tests grün, Ruff und Formatierung sauber. Zwei unabhängige Review-Runden durch Claude Sonnet 5.5, abschließend ohne verbleibende Release-Blocker.
+- Qualität: 109 Tests grün, Ruff und Formatierung sauber. Zwei unabhängige Review-Runden durch Claude Sonnet 5.5, abschließend ohne verbleibende Release-Blocker.
 
 ### English
 
@@ -20,7 +20,7 @@
 - Errors and repairs use fully localized sentences instead of raw English messages. Command failures other than code 1106 are also reported as a friendly `HomeAssistantError`; debug logs keep error codes but no sensitive raw text.
 - The camera now follows the same availability logic as the other platforms; the stream URL is still never stored or logged. Region names avoid nested parentheses, and unnamed devices get a friendly fallback instead of the internal ID.
 - All platforms declare `PARALLEL_UPDATES`. The minimum version rises to Home Assistant 2025.8.0 because `OptionsFlowWithReload` was introduced there.
-- Quality: 108 tests passing, Ruff and formatting clean. Two independent review rounds by Claude Sonnet 5.5, ending with no remaining release blockers.
+- Quality: 109 tests passing, Ruff and formatting clean. Two independent review rounds by Claude Sonnet 5.5, ending with no remaining release blockers.
 
 ---
 

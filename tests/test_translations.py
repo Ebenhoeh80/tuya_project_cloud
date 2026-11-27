@@ -91,8 +91,22 @@ def test_charger_states_are_translated() -> None:
     for language in ("strings", "de", "en"):
         sensor = _load(language)["entity"]["sensor"]
         assert set(sensor["work_state"]["state"]) >= {"101", "300"}
-        assert set(sensor["work_state_debug"]["state"]) >= {"SLEEP", "WORKING"}
+        assert set(sensor["work_state_debug"]["state"]) >= {"sleep", "working"}
     assert _load("de")["entity"]["sensor"]["work_state"]["state"]["100"] == "Offline"
+
+
+def test_all_state_keys_are_hassfest_compatible() -> None:
+    """Hassfest rejects translation keys that are not snake_case."""
+    for language in ("strings", "de", "en"):
+        for platform, entries in _load(language)["entity"].items():
+            for key, entry in entries.items():
+                for state_key in entry.get("state", {}):
+                    assert state_key == state_key.lower(), (
+                        language,
+                        platform,
+                        key,
+                        state_key,
+                    )
 
 
 def test_user_facing_errors_are_translated() -> None:

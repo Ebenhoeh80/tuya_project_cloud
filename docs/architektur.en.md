@@ -140,7 +140,7 @@ Scaling `(unverified in detail)`: voltage/current/power/energy from `x_metrics` 
 - `tests/test_camera.py`: fresh HLS URL, offline case, option, stream error.
 - `tests/test_diagnostics.py`: redaction including stream URL/`m3u8`, shadow codes only in output.
 
-Current state: 108 tests green, `ruff check` and `ruff format --check` clean (WSL, Python 3.13). The minimum version is Home Assistant 2025.8.0 because `OptionsFlowWithReload` was introduced there. `pytest.ini` sets `asyncio_mode = auto`, `strict-markers` and `strict-config`; `validate.yml` uses concurrency and timeouts. Camera tests additionally need `PyTurboJPEG` because HA imports `homeassistant.components.camera`.
+Current state: 109 tests green, `ruff check` and `ruff format --check` clean (WSL, Python 3.13). The minimum version is Home Assistant 2025.8.0 because `OptionsFlowWithReload` was introduced there. `pytest.ini` sets `asyncio_mode = auto`, `strict-markers` and `strict-config`; `validate.yml` uses concurrency and timeouts. Camera tests additionally need `PyTurboJPEG` because HA imports `homeassistant.components.camera`.
 
 ## 9. Iteration plan
 

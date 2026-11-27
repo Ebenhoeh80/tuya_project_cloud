@@ -56,8 +56,6 @@
       "work_state_debug": {
         "name": "Arbeitszustand (Rohwert)",
         "state": {
-          "SLEEP": "Ruhezustand",
-          "WORKING": "In Betrieb",
           "sleep": "Ruhezustand",
           "working": "In Betrieb"
         }
@@ -79,9 +77,7 @@
         "name": "Lebenszeichen",
         "state": {
           "false": "Kein Lebenszeichen",
-          "False": "Kein Lebenszeichen",
-          "true": "Lebenszeichen empfangen",
-          "True": "Lebenszeichen empfangen"
+          "true": "Lebenszeichen empfangen"
         }
       },
       "dps_battery": { "name": "Batterie (Rohwert)" },

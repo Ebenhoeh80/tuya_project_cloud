@@ -56,8 +56,6 @@
       "work_state_debug": {
         "name": "Work state (raw value)",
         "state": {
-          "SLEEP": "Standby",
-          "WORKING": "Working",
           "sleep": "Standby",
           "working": "Working"
         }
@@ -79,9 +77,7 @@
         "name": "Heartbeat signal",
         "state": {
           "false": "No heartbeat",
-          "False": "No heartbeat",
-          "true": "Heartbeat received",
-          "True": "Heartbeat received"
+          "true": "Heartbeat received"
         }
       },
       "dps_battery": { "name": "Battery (raw value)" },

@@ -8,7 +8,7 @@ A Home Assistant custom integration that controls devices **exclusively through 
 
 Feasibility proven live on 2026-11-27: token, device list, status, functions and an idempotent command (`POST /v1.0/devices/{id}/commands`) all work with the project token alone. Also implemented live: the `dé EV Charger` returns 23 DPS values via the IoT Core thing shadow, mapped to 16 sensors; the door viewer delivers a short-lived HLS live stream via `stream/actions/allocate`. See the [feasibility report](docs/machbarkeit.en.md), sections 10 and 11.
 
-State 0.2.5: 108 tests passing, Ruff clean, minimum Home Assistant version 2025.8.0. The 0.2.4 installation with 8 devices, 16 charger sensors and the HLS camera was verified live (config entry `loaded`, 73/73 entity IDs unchanged, no Tuya issues); the upgrade to 0.2.5 is validated in the release run.
+State 0.2.5: 109 tests passing, Ruff clean, minimum Home Assistant version 2025.8.0. The 0.2.4 installation with 8 devices, 16 charger sensors and the HLS camera was verified live (config entry `loaded`, 73/73 entity IDs unchanged, no Tuya issues); the upgrade to 0.2.5 is validated in the release run.
 
 ## Prerequisites
 
