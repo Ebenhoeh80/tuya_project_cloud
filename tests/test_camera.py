@@ -13,7 +13,9 @@ from custom_components.tuya_project_cloud.camera import (
 )
 
 
-def _entry(*, online: bool = True, enabled: bool = True) -> MagicMock:
+def _entry(
+    *, online: bool = True, enabled: bool = True, refreshed: bool = True
+) -> MagicMock:
     """Return an entry with one mocked camera device."""
     device = TuyaDevice(
         id="cam1",
@@ -21,6 +23,7 @@ def _entry(*, online: bool = True, enabled: bool = True) -> MagicMock:
         category="sp",
         product_id="p1",
         online=online,
+        last_update_success=refreshed,
     )
     coordinator = MagicMock()
     coordinator.data = {"cam1": device}
@@ -57,6 +60,18 @@ async def test_camera_offline_has_no_source() -> None:
     entry = _entry(online=False)
     await camera_setup(MagicMock(), entry, lambda entities: added.extend(entities))
     assert await added[0].stream_source() is None
+    entry.runtime_data.client.async_allocate_stream.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_stale_camera_is_unavailable_and_has_no_source() -> None:
+    """A failed refresh marks the camera unavailable like every other entity."""
+    added: list = []
+    entry = _entry(refreshed=False)
+    await camera_setup(MagicMock(), entry, lambda entities: added.extend(entities))
+    camera = added[0]
+    assert camera.available is False
+    assert await camera.stream_source() is None
     entry.runtime_data.client.async_allocate_stream.assert_not_awaited()
 
 

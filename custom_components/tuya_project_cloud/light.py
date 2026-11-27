@@ -17,6 +17,8 @@ from .const import LIGHT_CODES
 from .entity import TuyaProjectCloudEntity
 from .utils import coerce_float
 
+PARALLEL_UPDATES = 1
+
 
 async def async_setup_entry(
     hass: HomeAssistant,

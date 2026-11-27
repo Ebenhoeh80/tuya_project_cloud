@@ -1,5 +1,29 @@
 # Changelog / Änderungen
 
+## [0.2.5] - 2026-11-27
+
+### Deutsch
+
+- UX: Bekannte DPS-Codes erhalten lesbare, de/en-lokalisierte Namen statt technischer Codes. Da die Skalierung pro Gerät unterschiedlich sein kann, bleiben alle DPS-Werte ausdrücklich als Rohwerte gekennzeichnet; es werden keine Einheiten, Device-Classes oder Statistiken erfunden.
+- Der doppelten Helligkeitssteuerung wird nur vorgebeugt, wenn die Light tatsächlich denselben Code nutzt. Andernfalls bleibt `bright_value_v2` wie in 0.2.4 als Number verfügbar. Alle 73 bestehenden Entity-IDs, Automationen und Konfigurationen bleiben unverändert.
+- Bestehende Switches behalten ihre Platzierung auf der Gerätekarte; es werden keine Entity-Kategorien nachträglich geändert. `work_state_debug` ist nun als Diagnose gekennzeichnet, und die Firmware aus dem Shadow erscheint als Geräte-Firmware. Zustandsübersetzungen gibt es nur für live belegte Werte (`101` = Bereitschaft, `300` = Lädt); die Anzeigenamen einiger Shadow-Sensoren wurden präzisiert (z. B. „Configured maximum current“), ihre Entity-IDs bleiben gleich.
+- Fehler und Repairs nutzen vollständig lokalisierte Sätze statt englischer Rohmeldungen. Auch andere Befehlsfehler als Code 1106 werden als verständlicher `HomeAssistantError` gemeldet; Debug-Logs behalten Fehlercodes, aber keine sensiblen Rohtexte.
+- Die Kamera folgt jetzt derselben Verfügbarkeitslogik wie die übrigen Plattformen; die Stream-URL wird weiterhin nie gespeichert oder protokolliert. Regionsnamen vermeiden doppelte Klammern, Geräte ohne Namen erhalten einen freundlichen Platzhalter statt der internen ID.
+- Alle Plattformen deklarieren `PARALLEL_UPDATES`. Die Mindestversion steigt auf Home Assistant 2025.8.0, weil `OptionsFlowWithReload` dort eingeführt wurde.
+- Qualität: 108 Tests grün, Ruff und Formatierung sauber. Zwei unabhängige Review-Runden durch Claude Sonnet 5.5, abschließend ohne verbleibende Release-Blocker.
+
+### English
+
+- UX: Known DPS codes now get readable, localized DE/EN names instead of technical codes. Because scaling can differ per device, all DPS values are explicitly marked as raw values; no units, device classes or statistics are invented.
+- Duplicate brightness controls are prevented only when the light actually uses the same code. Otherwise `bright_value_v2` stays available as a number as in 0.2.4. All 73 existing entity IDs, automations and configurations remain unchanged.
+- Existing switches keep their place on the device card; no entity categories are changed retroactively. `work_state_debug` is now diagnostic, and firmware from the shadow is shown as the device firmware. State translations exist only for live-observed values (`101` = standby, `300` = charging); a few shadow sensor display names were clarified (e.g. "Configured maximum current") while their entity IDs stay the same.
+- Errors and repairs use fully localized sentences instead of raw English messages. Command failures other than code 1106 are also reported as a friendly `HomeAssistantError`; debug logs keep error codes but no sensitive raw text.
+- The camera now follows the same availability logic as the other platforms; the stream URL is still never stored or logged. Region names avoid nested parentheses, and unnamed devices get a friendly fallback instead of the internal ID.
+- All platforms declare `PARALLEL_UPDATES`. The minimum version rises to Home Assistant 2025.8.0 because `OptionsFlowWithReload` was introduced there.
+- Quality: 108 tests passing, Ruff and formatting clean. Two independent review rounds by Claude Sonnet 5.5, ending with no remaining release blockers.
+
+---
+
 ## [0.2.4] - 2026-11-27
 
 ### Deutsch

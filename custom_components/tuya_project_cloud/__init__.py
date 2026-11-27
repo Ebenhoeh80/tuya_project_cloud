@@ -30,6 +30,7 @@ from .const import (
     DOMAIN as DOMAIN,
 )
 from .coordinator import TuyaProjectCloudCoordinator
+from .utils import error_label
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -48,11 +49,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     except ConfigEntryAuthFailed:
         raise
     except TuyaAuthenticationError as err:
-        raise ConfigEntryAuthFailed(str(err)) from err
+        _LOGGER.debug("Authentication failed during setup: %s", error_label(err))
+        raise ConfigEntryAuthFailed(
+            translation_domain=DOMAIN,
+            translation_key="authentication_failed",
+        ) from err
     except (TuyaApiError, OSError) as err:
         # Authorization and transient API errors must not become an
         # unhandled exception during setup; retrying is always safer.
-        raise ConfigEntryNotReady(str(err)) from err
+        _LOGGER.debug("Setup failed: %s", error_label(err))
+        raise ConfigEntryNotReady(
+            translation_domain=DOMAIN,
+            translation_key="setup_failed",
+        ) from err
 
     entry.runtime_data = coordinator
     await hass.config_entries.async_forward_entry_setups(

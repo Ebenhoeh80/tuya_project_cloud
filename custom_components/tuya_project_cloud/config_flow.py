@@ -67,7 +67,7 @@ REGION_TITLES: dict[str, dict[str, str]] = {
 def _region_title(language: str, region: str) -> str:
     """Build a human-readable config entry title for a region code."""
     labels = REGION_TITLES.get(language.split("-", 1)[0].lower(), REGION_TITLES["en"])
-    return f"Tuya Cloud ({labels.get(region, region)})"
+    return f"Tuya Cloud – {labels.get(region, region)}"
 
 
 STEP_USER_SCHEMA = vol.Schema(

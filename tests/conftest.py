@@ -16,7 +16,7 @@ def mock_config_entry() -> MockConfigEntry:
     """Return a mock config entry with project credentials."""
     return MockConfigEntry(
         domain="tuya_project_cloud",
-        title="Tuya Cloud (eu)",
+        title="Tuya Cloud – Europa (Zentral)",
         data={
             "access_id": "test_access_id",
             "access_secret": "test_access_secret",

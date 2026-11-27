@@ -9,7 +9,10 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import LIGHT_CODES
+from .dps import SWITCH_DESCRIPTIONS
 from .entity import TuyaProjectCloudEntity
+
+PARALLEL_UPDATES = 1
 
 SWITCH_HINTS = ("switch", "onoff", "power", "enable", "pir_switch", "doorbell_active")
 
@@ -34,17 +37,12 @@ async def async_setup_entry(
                 continue
             if code in LIGHT_CODES:
                 continue
-            entities.append(
-                TuyaSwitch(
-                    coordinator,
-                    device,
-                    SwitchEntityDescription(
-                        key=code,
-                        name=code.replace("_", " ").title(),
-                    ),
-                    code,
-                )
+            description = SWITCH_DESCRIPTIONS.get(code) or SwitchEntityDescription(
+                key=code,
+                translation_key="dps_unknown_switch",
+                translation_placeholders={"code": code},
             )
+            entities.append(TuyaSwitch(coordinator, device, description, code))
     async_add_entities(entities)
 
 

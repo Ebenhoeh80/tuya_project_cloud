@@ -47,6 +47,7 @@ CHARGER_SHADOW_SENSORS: tuple[ShadowSensorDescription, ...] = (
         key="work_state_debug",
         translation_key="work_state_debug",
         code="x_work_st_debug",
+        entity_category=EntityCategory.DIAGNOSTIC,
     ),
     ShadowSensorDescription(
         key="voltage_l1",
@@ -193,6 +194,15 @@ def has_shadow_sensors(device: TuyaDevice) -> bool:
     return any(
         description.code in device.shadow for description in CHARGER_SHADOW_SENSORS
     )
+
+
+def shadow_firmware(device: TuyaDevice) -> str | None:
+    """Return the verified firmware value for the device registry, if present."""
+    description = next(
+        item for item in CHARGER_SHADOW_SENSORS if item.key == "firmware"
+    )
+    value = shadow_value(device.shadow, description)
+    return str(value) if value not in (None, "") else None
 
 
 def shadow_value(

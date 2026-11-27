@@ -5,7 +5,11 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from homeassistant.exceptions import ConfigEntryAuthFailed, ServiceValidationError
+from homeassistant.exceptions import (
+    ConfigEntryAuthFailed,
+    HomeAssistantError,
+    ServiceValidationError,
+)
 from homeassistant.helpers.update_coordinator import UpdateFailed
 
 from custom_components.tuya_project_cloud.api import (
@@ -335,3 +339,118 @@ async def test_log_messages_do_not_contain_raw_device_id(
         await coordinator._async_update_data()
     assert "dev-secret-123" not in caplog.text
     assert redact_identifier("dev-secret-123") in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_debug_logs_keep_error_code_without_raw_message(
+    hass, mock_config_entry, caplog
+) -> None:
+    """Debug logs stay useful without echoing the raw API message."""
+    coordinator = _make_coordinator(hass, mock_config_entry)
+    coordinator.client.async_get_devices = AsyncMock(
+        return_value=[
+            {
+                "id": "dev-secret-123",
+                "name": "Plug",
+                "category": "cz",
+                "product_id": "p1",
+                "online": True,
+            }
+        ]
+    )
+    coordinator.client.async_get_status = AsyncMock(
+        side_effect=TuyaAuthorizationError("raw-secret-message", code=1106)
+    )
+    with caplog.at_level("DEBUG"):
+        await coordinator._async_update_data()
+    assert "code=1106" in caplog.text
+    assert "raw-secret-message" not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_device_list_errors_are_localized_without_raw_details(
+    hass, mock_config_entry
+) -> None:
+    """Fetch failures use translation keys instead of raw API messages."""
+    coordinator = _make_coordinator(hass, mock_config_entry)
+    coordinator.client.async_get_devices = AsyncMock(
+        side_effect=TuyaAuthenticationError("secret-token-value")
+    )
+    with pytest.raises(ConfigEntryAuthFailed) as auth_err:
+        await coordinator._async_update_data()
+    assert auth_err.value.translation_key == "authentication_failed"
+    assert auth_err.value.translation_domain == "tuya_project_cloud"
+    assert "secret-token-value" not in str(auth_err.value)
+
+    coordinator.client.async_get_devices = AsyncMock(
+        side_effect=TuyaApiError("secret-endpoint-value")
+    )
+    with pytest.raises(UpdateFailed) as update_err:
+        await coordinator._async_update_data()
+    assert update_err.value.translation_key == "update_failed"
+    assert update_err.value.translation_domain == "tuya_project_cloud"
+    assert "secret-endpoint-value" not in str(update_err.value)
+
+
+@pytest.mark.asyncio
+async def test_missing_device_name_uses_readable_fallback(
+    hass, mock_config_entry
+) -> None:
+    """An unnamed device never exposes its internal ID as the display name."""
+    coordinator = _make_coordinator(hass, mock_config_entry)
+    coordinator.client.async_get_devices = AsyncMock(
+        return_value=[
+            {
+                "id": "dev-secret-123",
+                "name": "   ",
+                "category": "cz",
+                "product_id": "p1",
+                "online": True,
+            }
+        ]
+    )
+    data = await coordinator._async_update_data()
+    assert data["dev-secret-123"].name == "Tuya device"
+
+    hass.config.language = "de"
+    coordinator.client.async_get_devices = AsyncMock(
+        return_value=[
+            {
+                "id": "dev-secret-456",
+                "category": "cz",
+                "product_id": "p1",
+                "online": True,
+            }
+        ]
+    )
+    data = await coordinator._async_update_data()
+    assert data["dev-secret-456"].name == "Tuya-Gerät"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "error",
+    [
+        TuyaAuthorizationError("denied", code=1234),
+        TuyaApiError("secret-detail"),
+    ],
+)
+async def test_other_command_errors_are_localized(
+    hass, mock_config_entry, error
+) -> None:
+    """Non-1106 command failures are friendly and do not create a repair."""
+    coordinator = _make_coordinator(hass, mock_config_entry)
+    coordinator.async_request_refresh = AsyncMock()
+    coordinator.client.async_send_command = AsyncMock(side_effect=error)
+    with (
+        patch(
+            "custom_components.tuya_project_cloud.coordinator.async_update_command_issue"
+        ) as update_issue,
+        pytest.raises(HomeAssistantError) as err,
+    ):
+        await coordinator.async_send_command("dev1", "switch", True)
+    assert err.value.translation_key == "command_failed"
+    assert err.value.translation_domain == "tuya_project_cloud"
+    assert "secret-detail" not in str(err.value)
+    update_issue.assert_not_called()
+    coordinator.async_request_refresh.assert_not_awaited()

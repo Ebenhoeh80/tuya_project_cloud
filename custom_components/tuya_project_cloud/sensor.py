@@ -9,8 +9,11 @@ from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
+from .dps import SENSOR_DESCRIPTIONS
 from .entity import TuyaProjectCloudEntity, TuyaShadowEntity
 from .shadow import CHARGER_SHADOW_SENSORS, has_shadow_sensors
+
+PARALLEL_UPDATES = 0
 
 SENSOR_HINTS = (
     "battery",
@@ -40,18 +43,13 @@ async def async_setup_entry(
                 continue
             if not any(hint in code.lower() for hint in SENSOR_HINTS):
                 continue
-            entities.append(
-                TuyaSensor(
-                    coordinator,
-                    device,
-                    SensorEntityDescription(
-                        key=code,
-                        name=code.replace("_", " ").title(),
-                        entity_category=EntityCategory.DIAGNOSTIC,
-                    ),
-                    code,
-                )
+            description = SENSOR_DESCRIPTIONS.get(code) or SensorEntityDescription(
+                key=code,
+                translation_key="dps_unknown_sensor",
+                translation_placeholders={"code": code},
+                entity_category=EntityCategory.DIAGNOSTIC,
             )
+            entities.append(TuyaSensor(coordinator, device, description, code))
     known_shadow_ids: set[str] = set()
 
     def _new_shadow_sensors() -> list[TuyaShadowSensor]:

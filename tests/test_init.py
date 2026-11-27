@@ -6,10 +6,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from homeassistant.config_entries import ConfigEntryState
-from homeassistant.exceptions import ConfigEntryAuthFailed
+from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 
-from custom_components.tuya_project_cloud import async_remove_entry
+from custom_components.tuya_project_cloud import async_remove_entry, async_setup_entry
 from custom_components.tuya_project_cloud.api import (
+    TuyaApiError,
+    TuyaAuthenticationError,
     TuyaAuthorizationError,
     TuyaConnectionError,
 )
@@ -125,3 +127,63 @@ async def test_setup_authorization_error_retries(hass, mock_config_entry) -> Non
     ):
         await hass.config_entries.async_setup(mock_config_entry.entry_id)
     assert mock_config_entry.state is ConfigEntryState.SETUP_RETRY
+
+
+@pytest.mark.asyncio
+async def test_unload_entry_unloads_every_platform(hass, mock_config_entry) -> None:
+    """Unloading removes all forwarded platforms."""
+    with patch.object(
+        hass.config_entries, "async_unload_platforms", AsyncMock(return_value=True)
+    ) as unload:
+        from custom_components.tuya_project_cloud import async_unload_entry
+
+        assert await async_unload_entry(hass, mock_config_entry) is True
+    platforms = {str(platform) for platform in unload.call_args.args[1]}
+    assert platforms == {
+        "camera",
+        "climate",
+        "cover",
+        "light",
+        "number",
+        "sensor",
+        "switch",
+    }
+
+
+@pytest.mark.asyncio
+async def test_setup_errors_use_localized_keys(hass, mock_config_entry) -> None:
+    """Setup failures never pass raw API text into the UI."""
+    coordinator = MagicMock()
+    coordinator.async_config_entry_first_refresh = AsyncMock(
+        side_effect=TuyaAuthenticationError("secret-value")
+    )
+    with (
+        patch(
+            "custom_components.tuya_project_cloud.TuyaOpenApi", return_value=MagicMock()
+        ),
+        patch(
+            "custom_components.tuya_project_cloud.TuyaProjectCloudCoordinator",
+            return_value=coordinator,
+        ),
+        pytest.raises(ConfigEntryAuthFailed) as auth_err,
+    ):
+        await async_setup_entry(hass, mock_config_entry)
+    assert auth_err.value.translation_key == "authentication_failed"
+    assert "secret-value" not in str(auth_err.value)
+
+    coordinator.async_config_entry_first_refresh = AsyncMock(
+        side_effect=TuyaApiError("secret-value")
+    )
+    with (
+        patch(
+            "custom_components.tuya_project_cloud.TuyaOpenApi", return_value=MagicMock()
+        ),
+        patch(
+            "custom_components.tuya_project_cloud.TuyaProjectCloudCoordinator",
+            return_value=coordinator,
+        ),
+        pytest.raises(ConfigEntryNotReady) as retry_err,
+    ):
+        await async_setup_entry(hass, mock_config_entry)
+    assert retry_err.value.translation_key == "setup_failed"
+    assert "secret-value" not in str(retry_err.value)

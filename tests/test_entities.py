@@ -9,6 +9,15 @@ from homeassistant.components.climate import HVACMode
 from homeassistant.const import EntityCategory
 from homeassistant.helpers.typing import UNDEFINED
 
+from custom_components.tuya_project_cloud import (
+    camera,
+    climate,
+    cover,
+    light,
+    number,
+    sensor,
+    switch,
+)
 from custom_components.tuya_project_cloud.api import (
     TuyaDevice,
     TuyaFunction,
@@ -18,6 +27,7 @@ from custom_components.tuya_project_cloud.climate import (
     async_setup_entry as climate_setup,
 )
 from custom_components.tuya_project_cloud.cover import async_setup_entry as cover_setup
+from custom_components.tuya_project_cloud.entity import tuya_device_info
 from custom_components.tuya_project_cloud.light import async_setup_entry as light_setup
 from custom_components.tuya_project_cloud.number import (
     async_setup_entry as number_setup,
@@ -143,12 +153,20 @@ async def test_switch_state_and_command() -> None:
 
 @pytest.mark.asyncio
 async def test_sensor_value_and_category() -> None:
-    """Sensor exposes the DPS value as diagnostic."""
+    """Sensor exposes the DPS value with a readable name and verified metadata."""
     added = []
     await sensor_setup(MagicMock(), _entry(_device()), lambda e: added.extend(e))
     sensors = {entity.entity_description.key: entity for entity in added}
-    assert sensors["battery"].native_value == 88
-    assert sensors["battery"].entity_category is EntityCategory.DIAGNOSTIC
+    battery = sensors["battery"]
+    assert battery.native_value == 88
+    assert battery.entity_category is EntityCategory.DIAGNOSTIC
+    assert battery.entity_description.translation_key == "dps_battery"
+    assert battery.device_class is None
+    assert battery.native_unit_of_measurement is None
+    assert sensors["temperature"].entity_description.translation_key == (
+        "dps_temperature"
+    )
+    assert sensors["temperature"].native_unit_of_measurement is None
 
 
 @pytest.mark.asyncio
@@ -226,6 +244,7 @@ async def test_shadow_sensors() -> None:
         )
     }
     assert sensors["work_state_debug"].native_value == "WORKING"
+    assert sensors["work_state_debug"].entity_category is EntityCategory.DIAGNOSTIC
     assert sensors["voltage_l1"].native_value == 221.0
     assert sensors["current_l1"].native_value == 1.5
     assert sensors["power"].native_value == 10.0
@@ -386,3 +405,150 @@ def test_shadow_value_edge_cases() -> None:
         is None
     )
     assert shadow_value({}, description) is None
+
+
+@pytest.mark.asyncio
+async def test_dps_entities_use_readable_translation_keys() -> None:
+    """Known and unknown DPS codes get localized names without changing IDs."""
+    device = _device()
+    device.status["humidity_value"] = 55
+    device.status["status_unknown"] = 1
+    device.functions["child_lock"] = TuyaFunction("child_lock", "Boolean")
+    device.functions["mystery_switch"] = TuyaFunction("mystery_switch", "Boolean")
+    device.functions["bright_value_v2"] = TuyaFunction(
+        "bright_value_v2", "Integer", {"min": 0, "max": 100, "step": 1}
+    )
+    device.status["bright_value_v2"] = 50
+
+    sensors: list = []
+    switches: list = []
+    numbers: list = []
+    await sensor_setup(MagicMock(), _entry(device), lambda e: sensors.extend(e))
+    await switch_setup(MagicMock(), _entry(device), lambda e: switches.extend(e))
+    await number_setup(MagicMock(), _entry(device), lambda e: numbers.extend(e))
+
+    sensor_by_code = {entity.entity_description.key: entity for entity in sensors}
+    switch_by_code = {entity.entity_description.key: entity for entity in switches}
+    number_by_code = {entity.entity_description.key: entity for entity in numbers}
+
+    assert sensor_by_code["humidity_value"].entity_description.translation_key == (
+        "dps_humidity"
+    )
+    assert sensor_by_code["status_unknown"].entity_description.translation_key == (
+        "dps_unknown_sensor"
+    )
+    assert sensor_by_code[
+        "status_unknown"
+    ].entity_description.translation_placeholders == {"code": "status_unknown"}
+    assert switch_by_code["child_lock"].entity_category is None
+    assert switch_by_code["mystery_switch"].entity_description.translation_key == (
+        "dps_unknown_switch"
+    )
+    assert number_by_code["volume"].entity_description.translation_key == "dps_volume"
+    # The light uses bright_value, so the v2 DPS must stay available as a number.
+    assert "bright_value_v2" in number_by_code
+    assert "bright_value" not in number_by_code
+    assert {entity.unique_id for entity in sensors} >= {
+        "dev1_humidity_value",
+        "dev1_status_unknown",
+    }
+    assert {entity.unique_id for entity in switches} >= {
+        "dev1_child_lock",
+        "dev1_mystery_switch",
+    }
+    assert "dev1_volume" in {entity.unique_id for entity in numbers}
+
+
+def test_device_info_contains_firmware_from_shadow() -> None:
+    """Device registry shows a readable firmware value when the shadow has one."""
+    device = _device()
+    device.shadow["x_charger_info"] = TuyaShadowProperty(
+        "x_charger_info", {"fv": "1.2.3"}
+    )
+    info = tuya_device_info(device)
+    assert info["sw_version"] == "1.2.3"
+    assert info["name"] == "Test"
+    assert info["model"] == "p1"
+
+
+def test_device_info_without_firmware_has_no_placeholder() -> None:
+    """Missing firmware is not shown as an internal code or blank value."""
+    info = tuya_device_info(_device())
+    assert "sw_version" not in info
+
+
+@pytest.mark.asyncio
+async def test_brightness_v2_number_remains_without_light_entity() -> None:
+    """A brightness number is not lost when the device has no light entity."""
+    device = _device()
+    for code in ("switch_led", "led_switch", "light", "switch_light"):
+        device.functions.pop(code, None)
+        device.status.pop(code, None)
+    device.functions["bright_value_v2"] = TuyaFunction(
+        "bright_value_v2", "Integer", {"min": 0, "max": 100, "step": 1}
+    )
+    device.status["bright_value_v2"] = 50
+
+    numbers: list = []
+    await number_setup(MagicMock(), _entry(device), lambda e: numbers.extend(e))
+    by_code = {entity.entity_description.key: entity for entity in numbers}
+    assert "bright_value_v2" in by_code
+    assert "bright_value" not in by_code
+
+
+@pytest.mark.asyncio
+async def test_brightness_v2_number_is_skipped_when_light_uses_it() -> None:
+    """The v2 brightness is not duplicated when a light exposes the same DPS."""
+    device = _device()
+    device.functions.pop("bright_value", None)
+    device.status.pop("bright_value", None)
+    device.functions["bright_value_v2"] = TuyaFunction(
+        "bright_value_v2", "Integer", {"min": 0, "max": 100, "step": 1}
+    )
+    device.status["bright_value_v2"] = 50
+
+    numbers: list = []
+    await number_setup(MagicMock(), _entry(device), lambda e: numbers.extend(e))
+    assert "bright_value_v2" not in {
+        entity.entity_description.key for entity in numbers
+    }
+
+
+@pytest.mark.asyncio
+async def test_number_keeps_translation_and_placeholders_after_range() -> None:
+    """Injecting the numeric range does not drop the localized metadata."""
+    device = _device()
+    device.functions["mystery_number"] = TuyaFunction(
+        "mystery_number", "Integer", {"min": 0, "max": 9, "step": 1}
+    )
+    device.status["mystery_number"] = 3
+    numbers: list = []
+    await number_setup(MagicMock(), _entry(device), lambda e: numbers.extend(e))
+    by_code = {entity.entity_description.key: entity for entity in numbers}
+    description = by_code["mystery_number"].entity_description
+    assert description.translation_key == "dps_unknown_number"
+    assert description.translation_placeholders == {"code": "mystery_number"}
+    assert description.native_min_value == 0
+    assert description.native_max_value == 9
+    assert description.native_step == 1
+
+
+@pytest.mark.asyncio
+async def test_unknown_switch_uses_code_only_as_placeholder() -> None:
+    """The internal DPS code is available for diagnosis, not a hard-coded name."""
+    device = _device()
+    device.functions["mystery_switch"] = TuyaFunction("mystery_switch", "Boolean")
+    switches: list = []
+    await switch_setup(MagicMock(), _entry(device), lambda e: switches.extend(e))
+    by_code = {entity.entity_description.key: entity for entity in switches}
+    description = by_code["mystery_switch"].entity_description
+    assert description.translation_key == "dps_unknown_switch"
+    assert description.translation_placeholders == {"code": "mystery_switch"}
+    assert description.name is UNDEFINED
+
+
+def test_all_platforms_declare_parallel_updates() -> None:
+    """Cloud platforms avoid unbounded concurrent writes to one coordinator."""
+    for module in (camera, climate, cover, light, number, sensor, switch):
+        assert hasattr(module, "PARALLEL_UPDATES"), module.__name__
+        assert isinstance(module.PARALLEL_UPDATES, int)

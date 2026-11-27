@@ -8,9 +8,11 @@ Eine Home-Assistant-Custom-Integration, die Geräte **ausschließlich über die 
 
 Machbarkeit am 27.11.2026 live bewiesen: Token, Geräteliste, Status, Funktionen und ein idempotenter Steuerbefehl (`POST /v1.0/devices/{id}/commands`) funktionieren mit dem reinen Projekt-Token. Ebenfalls live umgesetzt: Der `dé EV Charger` liefert über den IoT-Core-Shadow 23 DPS-Werte, aus denen 16 Sensoren entstehen; der Türspion liefert über `stream/actions/allocate` ein kurzlebiges HLS-Livebild. Siehe [Machbarkeitsbericht](docs/machbarkeit.md), Abschnitte 10 und 11.
 
-Stand 0.2.4: 81 Tests grün, Ruff sauber, HACS/Hassfest/CI grün. Die HACS-Installation mit 8 Geräten, 16 Lader-Sensoren und HLS-Kamera ist auf 0.2.4 aktualisiert; Readback: Config Entry `loaded`, 73/73 Entity-IDs unverändert (0 fehlend, 0 neu), keine Tuya-Issues in System Health und Log.
+Stand 0.2.5: 108 Tests grün, Ruff sauber, Mindestversion Home Assistant 2025.8.0. Die 0.2.4-Installation mit 8 Geräten, 16 Lader-Sensoren und HLS-Kamera war live verifiziert (Config Entry `loaded`, 73/73 Entity-IDs unverändert, keine Tuya-Issues); das Upgrade auf 0.2.5 wird im Release-Durchgang validiert.
 
 ## Voraussetzungen
+
+- Home Assistant 2025.8.0 oder neuer (wegen `OptionsFlowWithReload`).
 
 1. Tuya-IoT-Projekt in der [Tuya Developer Console](https://platform.tuya.com/) anlegen.
 2. Access ID und Access Secret notieren.
@@ -55,7 +57,7 @@ Die Integration erzeugt Entitäten dynamisch aus den DPS-Funktionen und Statusco
 | Sensor (Shadow) | Geräte mit IoT-Core-`x_*`-Properties: Arbeitszustand, Spannungen, Ströme, Leistung, Energie, Ladestrom, Firmware; neue Sensoren erscheinen, sobald Daten eintreffen |
 | Camera | Kategorie `sp` oder Functions mit `stream`: HLS-Livebild |
 
-Unbekannte Codes werden nicht geraten und nicht gesteuert. Für den Lader werden nur live beobachtete und plausibel skalierte Werte abgebildet; nicht eindeutige Zeiten und Zähler-Rohwerte bleiben außen vor. Es werden keine Schreibbefehle an die Wallbox gesendet.
+Unbekannte Codes werden nicht geraten und nicht gesteuert. DPS-Werte erscheinen als Rohwerte mit lesbarem Namen, weil die Skalierung je Gerät nicht verifiziert ist. Für den Lader werden nur live beobachtete und plausibel skalierte Shadow-Werte abgebildet; nicht eindeutige Zeiten und Zähler-Rohwerte bleiben außen vor. Es werden keine Schreibbefehle an die Wallbox gesendet.
 
 ## Technische Grenzen
 

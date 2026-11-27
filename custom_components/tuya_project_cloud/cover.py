@@ -17,6 +17,8 @@ from .const import CONTROL_CODES
 from .entity import TuyaProjectCloudEntity
 from .utils import coerce_int
 
+PARALLEL_UPDATES = 1
+
 COVER_CATEGORIES = {"cl", "curtain", "jc"}
 
 

@@ -8,6 +8,11 @@ import pytest
 from homeassistant.config_entries import SOURCE_REAUTH
 from homeassistant.data_entry_flow import FlowResultType
 
+from custom_components.tuya_project_cloud.api import (
+    TuyaApiError,
+    TuyaAuthenticationError,
+    TuyaConnectionError,
+)
 from custom_components.tuya_project_cloud.const import (
     CONF_ACCESS_ID,
     CONF_ACCESS_SECRET,
@@ -43,8 +48,6 @@ async def test_user_flow_success(hass) -> None:
 @pytest.mark.asyncio
 async def test_user_flow_invalid_auth(hass) -> None:
     """Invalid credentials show an error."""
-    from custom_components.tuya_project_cloud.api import TuyaAuthenticationError
-
     result = await hass.config_entries.flow.async_init(
         "tuya_project_cloud", context={"source": "user"}
     )
@@ -137,8 +140,6 @@ async def test_reauth_success_updates_credentials(hass, mock_config_entry) -> No
 @pytest.mark.asyncio
 async def test_reauth_invalid_auth_keeps_old_data(hass, mock_config_entry) -> None:
     """A failed reauth shows the localized error and keeps the old credentials."""
-    from custom_components.tuya_project_cloud.api import TuyaAuthenticationError
-
     with patch(
         "custom_components.tuya_project_cloud.async_setup_entry",
         AsyncMock(return_value=True),
@@ -168,8 +169,8 @@ def test_region_title_is_localized() -> None:
     """Config entry titles use readable region names, not raw codes."""
     from custom_components.tuya_project_cloud.config_flow import _region_title
 
-    assert _region_title("de-DE", "eu") == "Tuya Cloud (Europa (Zentral))"
-    assert _region_title("en", "us_east") == "Tuya Cloud (United States (East))"
+    assert _region_title("de-DE", "eu") == "Tuya Cloud – Europa (Zentral)"
+    assert _region_title("en", "us_east") == "Tuya Cloud – United States (East)"
 
 
 @pytest.mark.asyncio
@@ -188,3 +189,44 @@ async def test_options_flow_defaults(hass, mock_config_entry) -> None:
     assert defaults["scan_interval"] == 30
     assert defaults["enable_shadow"] is True
     assert defaults["enable_camera"] is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("error", "expected"),
+    [
+        (TuyaConnectionError("offline"), "cannot_connect"),
+        (TuyaApiError("unknown"), "unknown"),
+    ],
+)
+async def test_user_flow_maps_connection_and_api_errors(hass, error, expected) -> None:
+    """Network and unexpected errors show readable, localized messages."""
+    result = await hass.config_entries.flow.async_init(
+        "tuya_project_cloud", context={"source": "user"}
+    )
+    with patch(
+        "custom_components.tuya_project_cloud.config_flow.TuyaOpenApi.async_validate",
+        AsyncMock(side_effect=error),
+    ):
+        result2 = await hass.config_entries.flow.async_configure(
+            result["flow_id"], USER_INPUT
+        )
+    assert result2["type"] is FlowResultType.FORM
+    assert result2["errors"] == {"base": expected}
+
+
+@pytest.mark.asyncio
+async def test_user_flow_title_uses_readable_region(hass) -> None:
+    """The created entry title never shows a raw region code."""
+    hass.config.language = "de"
+    result = await hass.config_entries.flow.async_init(
+        "tuya_project_cloud", context={"source": "user"}
+    )
+    with patch(
+        "custom_components.tuya_project_cloud.config_flow.TuyaOpenApi.async_validate",
+        AsyncMock(),
+    ):
+        result2 = await hass.config_entries.flow.async_configure(
+            result["flow_id"], USER_INPUT
+        )
+    assert result2["title"] == "Tuya Cloud – Europa (Zentral)"

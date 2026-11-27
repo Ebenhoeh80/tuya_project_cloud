@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Tuya Cloud-Projekt verbinden",
-        "description": "Nur Access ID, Access Secret und Region eingeben. Zur Laufzeit ist kein App-Login nötig; das einmalige Verknüpfen des App-Kontos erfolgt in der Tuya-Konsole.",
+        "description": "Nur Access ID, Access Secret und Region eingeben. Für den Betrieb ist keine Anmeldung in der Tuya-App erforderlich; das einmalige Verknüpfen des App-Kontos erfolgt in der Tuya-Konsole.",
         "data": {
           "access_id": "Access ID (Client ID)",
           "access_secret": "Access Secret (Client Secret)",
@@ -21,32 +21,47 @@
       }
     },
     "error": {
-      "invalid_auth": "Access ID, Access Secret oder Signatur ungültig. Prüfe auch die Systemzeit des Hosts.",
-      "cannot_connect": "Tuya Cloud nicht erreichbar. Prüfe Internetverbindung und gewählte Region.",
+      "invalid_auth": "Access ID, Access Secret oder Signatur ungültig. Prüfe auch die Systemzeit des Rechners, auf dem Home Assistant läuft.",
+      "cannot_connect": "Tuya Cloud nicht erreichbar. Prüfe Internetverbindung und ausgewählte Region.",
       "unknown": "Unerwarteter Fehler beim Verbinden mit dem Tuya-Projekt."
     },
     "abort": {
-      "already_configured": "Dieses Tuya-Projekt ist bereits konfiguriert.",
-      "reauth_successful": "Authentifizierung erfolgreich erneuert."
+      "already_configured": "Dieses Tuya-Projekt ist bereits eingerichtet.",
+      "reauth_successful": "Anmeldung erfolgreich erneuert."
     }
   },
   "options": {
     "step": {
       "init": {
-        "title": "Optionen für Tuya Project Cloud",
-        "description": "Nach dem Speichern wird die Integration neu geladen. Deaktivierte Entitäten bleiben unverfügbar; vorhandene Entity-IDs werden nicht gelöscht.",
+        "title": "Tuya Project Cloud-Optionen",
+        "description": "Nach dem Speichern wird die Integration neu geladen. Entitäten deaktivierter Plattformen erscheinen als nicht verfügbar; vorhandene Entitäts-IDs werden nicht gelöscht.",
         "data": {
           "scan_interval": "Abfrageintervall in Sekunden (10–900, Standard 30)",
-          "enable_shadow": "IoT-Core-Shadow-Daten lesen (Laderwerte, Aktualisierung jede Minute)",
-          "enable_camera": "HLS-Livekameras bereitstellen"
+          "enable_shadow": "IoT-Core-Geräteschatten lesen (Ladewerte, Aktualisierung jede Minute)",
+          "enable_camera": "HLS-Livestreams bereitstellen"
         }
       }
     }
   },
   "entity": {
     "sensor": {
-      "work_state": { "name": "Arbeitszustand" },
-      "work_state_debug": { "name": "Arbeitszustand (Debug)" },
+      "work_state": {
+        "name": "Arbeitszustand",
+        "state": {
+          "100": "Offline",
+          "101": "Bereitschaft",
+          "300": "Lädt"
+        }
+      },
+      "work_state_debug": {
+        "name": "Arbeitszustand (Rohwert)",
+        "state": {
+          "SLEEP": "Ruhezustand",
+          "WORKING": "In Betrieb",
+          "sleep": "Ruhezustand",
+          "working": "In Betrieb"
+        }
+      },
       "voltage_l1": { "name": "Spannung L1" },
       "voltage_l2": { "name": "Spannung L2" },
       "voltage_l3": { "name": "Spannung L3" },
@@ -54,13 +69,70 @@
       "current_l2": { "name": "Strom L2" },
       "current_l3": { "name": "Strom L3" },
       "power": { "name": "Ladeleistung" },
-      "energy_session": { "name": "Energie dieser Ladung" },
+      "energy_session": { "name": "Energie in dieser Ladesitzung" },
       "charge_current": { "name": "Ladestrom" },
-      "max_current_cfg": { "name": "Maximalstrom" },
-      "energy_total": { "name": "Energie gesamt" },
+      "max_current_cfg": { "name": "Eingestellter Maximalstrom" },
+      "energy_total": { "name": "Gesamtenergie" },
       "firmware": { "name": "Firmware" },
-      "rcd_type": { "name": "Fehlerstromschutz" },
-      "heartbeat": { "name": "Heartbeat" }
+      "rcd_type": { "name": "Fehlerstromschutz-Typ" },
+      "heartbeat": {
+        "name": "Lebenszeichen",
+        "state": {
+          "false": "Kein Lebenszeichen",
+          "False": "Kein Lebenszeichen",
+          "true": "Lebenszeichen empfangen",
+          "True": "Lebenszeichen empfangen"
+        }
+      },
+      "dps_battery": { "name": "Batterie (Rohwert)" },
+      "dps_humidity": { "name": "Luftfeuchtigkeit (Rohwert)" },
+      "dps_pm25": { "name": "Feinstaub PM2,5 (Rohwert)" },
+      "dps_pm10": { "name": "Feinstaub PM10 (Rohwert)" },
+      "dps_co2": { "name": "CO₂ (Rohwert)" },
+      "dps_temperature": { "name": "Temperatur (Rohwert)" },
+      "dps_power": { "name": "Leistung (Rohwert)" },
+      "dps_power_calibration": { "name": "Leistungskalibrierung (Rohwert)" },
+      "dps_energy": { "name": "Energie (Rohwert)" },
+      "dps_voltage": { "name": "Spannung (Rohwert)" },
+      "dps_current": { "name": "Strom (Rohwert)" },
+      "dps_signal": { "name": "Signalstärke (Rohwert)" },
+      "dps_status": { "name": "Status (Rohwert)" },
+      "dps_sd_status": { "name": "Speicherkartenstatus (Rohwert)" },
+      "dps_power_mode": { "name": "Stromversorgungsmodus (Rohwert)" },
+      "dps_unknown_sensor": { "name": "Tuya-Wert ({code})" }
+    },
+    "switch": {
+      "dps_switch": { "name": "Schalter" },
+      "dps_switch_1": { "name": "Schalter 1" },
+      "dps_onoff": { "name": "Ein/Aus" },
+      "dps_enable": { "name": "Aktiviert" },
+      "dps_overcharge": { "name": "Überladungsschutz" },
+      "dps_child_lock": { "name": "Kindersicherung" },
+      "dps_inching": { "name": "Impulsmodus" },
+      "dps_indicator": { "name": "Status-LED" },
+      "dps_flip": { "name": "Bild spiegeln" },
+      "dps_osd": { "name": "Zeitstempel im Bild" },
+      "dps_privacy": { "name": "Privatsphäre-Modus" },
+      "dps_sd_format": { "name": "Speicherkarte formatieren" },
+      "dps_motion_record": { "name": "Bewegungsaufnahme" },
+      "dps_record": { "name": "Aufnahme" },
+      "dps_power_saving": { "name": "Energiesparmodus" },
+      "dps_wake": { "name": "Aufwecken" },
+      "dps_motion_sensor": { "name": "Bewegungsmelder" },
+      "dps_doorbell": { "name": "Klingel aktiv" },
+      "dps_motion_detection": { "name": "Bewegungserkennung" },
+      "dps_motion_tracking": { "name": "Motivverfolgung" },
+      "dps_human_filter": { "name": "Personenerkennung" },
+      "dps_cruise": { "name": "Patrouillenmodus" },
+      "dps_ptz_stop": { "name": "Kamerafahrt stoppen" },
+      "dps_ptz_calibration": { "name": "Kamera kalibrieren" },
+      "dps_unknown_switch": { "name": "Tuya-Schalter ({code})" }
+    },
+    "number": {
+      "dps_countdown_1": { "name": "Countdown 1" },
+      "dps_volume": { "name": "Lautstärke" },
+      "dps_power_saving_value": { "name": "Energiesparmodus (Wert)" },
+      "dps_unknown_number": { "name": "Tuya-Wert ({code})" }
     }
   },
   "selector": {
@@ -77,26 +149,38 @@
     }
   },
   "exceptions": {
+    "authentication_failed": {
+      "message": "Die Anmeldung bei Tuya ist fehlgeschlagen. Prüfe Access ID, Access Secret und Region."
+    },
+    "setup_failed": {
+      "message": "Die Integration konnte nicht initialisiert werden. Sie wird automatisch erneut versucht."
+    },
+    "update_failed": {
+      "message": "Gerätedaten konnten nicht von Tuya Cloud abgerufen werden."
+    },
+    "command_failed": {
+      "message": "Tuya hat den Gerätebefehl nicht angenommen. Prüfe die Verbindung und die Berechtigungen des Cloud-Projekts."
+    },
     "command_not_authorized": {
-      "message": "Tuya hat den Steuerbefehl abgelehnt (Fehler 1106). Prüfe die Berechtigungen des Cloud-Projekts und ob das Gerät freigegeben ist."
+      "message": "Tuya hat den Steuerbefehl abgelehnt (Fehlercode 1106: Berechtigung verweigert). Prüfe die Berechtigungen des Cloud-Projekts und ob das Gerät freigegeben ist."
     }
   },
   "issues": {
     "api_not_authorized": {
       "title": "Tuya-API nicht autorisiert",
-      "description": "Das Projekt darf die Geräte-API (/v1.0/devices) nicht aufrufen. Aktiviere sie in der Tuya-Konsole unter „Service API → Add Authorization“ (Berechtigung hinzufügen)."
+      "description": "Das Projekt darf die Device-API (/v1.0/devices) nicht aufrufen. Aktiviere sie in der Tuya-Konsole unter „Service API → Add Authorization“."
     },
     "iot_core_not_authorized": {
-      "title": "IoT-Core nicht autorisiert",
-      "description": "Die Thing-Shadow-API ist für das Projekt nicht freigegeben. Aktiviere IoT Core in der Tuya-Konsole und autorisiere das Cloud-Projekt; bis dahin fehlen die Lader-Sensoren."
+      "title": "IoT Core nicht autorisiert",
+      "description": "Die Thing-Shadow-API ist für das Projekt nicht freigegeben. Aktiviere IoT Core in der Tuya-Konsole und autorisiere das Cloud-Projekt; die Lade-Sensoren bleiben bis dahin nicht verfügbar."
     },
     "command_not_authorized": {
-      "title": "Gerätebefehl nicht erlaubt",
-      "description": "Tuya hat einen Steuerbefehl abgelehnt (Fehler 1106). Prüfe die Berechtigungen des Cloud-Projekts und ob das Gerät freigegeben ist."
+      "title": "Gerätebefehl nicht autorisiert",
+      "description": "Tuya hat einen Steuerbefehl abgelehnt (Fehlercode 1106: Berechtigung verweigert). Prüfe die Berechtigungen des Cloud-Projekts und ob das Gerät freigegeben ist."
     },
     "region_mismatch": {
       "title": "Keine Geräte gefunden",
-      "description": "Es wurden keine Geräte gefunden. Prüfe die gewählte Region und ob in der Tuya-Konsole ein App-Konto mit dem Projekt verknüpft ist."
+      "description": "Es wurden keine Geräte gefunden. Prüfe die ausgewählte Region und ob in der Tuya-Konsole ein App-Konto mit dem Cloud-Projekt verknüpft ist."
     }
   }
 }

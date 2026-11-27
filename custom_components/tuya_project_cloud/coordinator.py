@@ -8,7 +8,11 @@ from datetime import timedelta
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import ConfigEntryAuthFailed, ServiceValidationError
+from homeassistant.exceptions import (
+    ConfigEntryAuthFailed,
+    HomeAssistantError,
+    ServiceValidationError,
+)
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .api import (
@@ -30,9 +34,19 @@ from .const import (
     SHADOW_REFRESH_INTERVAL,
 )
 from .repairs import async_update_command_issue, async_update_issues
-from .utils import redact_identifier
+from .utils import error_label, redact_identifier
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _device_name(hass: HomeAssistant, raw_name: object) -> str:
+    """Use a readable fallback instead of exposing an internal device ID."""
+    if isinstance(raw_name, str) and raw_name.strip():
+        return raw_name
+    if hass.config.language.lower().startswith("de"):
+        return "Tuya-Gerät"
+    return "Tuya device"
+
 
 type TuyaProjectCloudConfigEntry = ConfigEntry[TuyaProjectCloudCoordinator]
 
@@ -74,9 +88,19 @@ class TuyaProjectCloudCoordinator(DataUpdateCoordinator[dict[str, TuyaDevice]]):
         try:
             raw_devices = await self.client.async_get_devices()
         except TuyaAuthenticationError as err:
-            raise ConfigEntryAuthFailed(str(err)) from err
+            _LOGGER.debug(
+                "Authentication failed while fetching devices: %s", error_label(err)
+            )
+            raise ConfigEntryAuthFailed(
+                translation_domain=DOMAIN,
+                translation_key="authentication_failed",
+            ) from err
         except (TuyaApiError, TuyaConnectionError) as err:
-            raise UpdateFailed(f"Cannot fetch devices: {err}") from err
+            _LOGGER.debug("Device list request failed: %s", error_label(err))
+            raise UpdateFailed(
+                translation_domain=DOMAIN,
+                translation_key="update_failed",
+            ) from err
 
         devices: dict[str, TuyaDevice] = {}
         api_denied = False
@@ -88,14 +112,15 @@ class TuyaProjectCloudCoordinator(DataUpdateCoordinator[dict[str, TuyaDevice]]):
                 continue
             device = self._known.get(device_id) or TuyaDevice(
                 id=device_id,
-                name=str(raw.get("name", device_id)),
+                name=_device_name(self.hass, raw.get("name")),
                 category=str(raw.get("category", "")),
                 product_id=str(raw.get("product_id", "")),
                 online=bool(raw.get("online", False)),
                 uid=str(raw.get("uid", "")),
                 owner_id=str(raw.get("owner_id", "")),
             )
-            device.name = str(raw.get("name", device.name))
+            if isinstance(raw.get("name"), str) and raw["name"].strip():
+                device.name = raw["name"]
             device.online = bool(raw.get("online", device.online))
             label = redact_identifier(device_id)
 
@@ -107,10 +132,12 @@ class TuyaProjectCloudCoordinator(DataUpdateCoordinator[dict[str, TuyaDevice]]):
                 device.last_update_success = False
                 if err.code == ERR_API_NOT_AUTHORIZED:
                     api_denied = True
-                _LOGGER.debug("No API permission for device %s: %s", label, err)
+                _LOGGER.debug(
+                    "No API permission for device %s: %s", label, error_label(err)
+                )
             except (TuyaApiError, TuyaConnectionError) as err:
                 device.last_update_success = False
-                _LOGGER.debug("Cannot read device %s: %s", label, err)
+                _LOGGER.debug("Cannot read device %s: %s", label, error_label(err))
 
             if not device.functions:
                 try:
@@ -118,16 +145,24 @@ class TuyaProjectCloudCoordinator(DataUpdateCoordinator[dict[str, TuyaDevice]]):
                 except TuyaAuthorizationError as err:
                     if err.code == ERR_API_NOT_AUTHORIZED:
                         api_denied = True
-                    _LOGGER.debug("No function permission for %s: %s", label, err)
+                    _LOGGER.debug(
+                        "No function permission for %s: %s", label, error_label(err)
+                    )
                 except (TuyaApiError, TuyaConnectionError) as err:
-                    _LOGGER.debug("Cannot read functions for %s: %s", label, err)
+                    _LOGGER.debug(
+                        "Cannot read functions for %s: %s", label, error_label(err)
+                    )
             if not device.specifications:
                 try:
                     device.specifications = await self.client.async_get_specifications(
                         device_id
                     )
                 except (TuyaApiError, TuyaConnectionError) as err:
-                    _LOGGER.debug("Cannot read specifications for %s: %s", label, err)
+                    _LOGGER.debug(
+                        "Cannot read specifications for %s: %s",
+                        label,
+                        error_label(err),
+                    )
 
             # Charger values change while charging. Refresh on a slower cadence
             # and retry quickly when the first response was empty or failed.
@@ -143,10 +178,16 @@ class TuyaProjectCloudCoordinator(DataUpdateCoordinator[dict[str, TuyaDevice]]):
                     if err.code == ERR_API_NOT_AUTHORIZED:
                         iot_core_denied = True
                     _LOGGER.debug(
-                        "No IoT Core permission for device %s: %s", label, err
+                        "No IoT Core permission for device %s: %s",
+                        label,
+                        error_label(err),
                     )
                 except (TuyaApiError, TuyaConnectionError) as err:
-                    _LOGGER.debug("Cannot read shadow for device %s: %s", label, err)
+                    _LOGGER.debug(
+                        "Cannot read shadow for device %s: %s",
+                        label,
+                        error_label(err),
+                    )
             devices[device_id] = device
 
         self._known = devices
@@ -178,11 +219,18 @@ class TuyaProjectCloudCoordinator(DataUpdateCoordinator[dict[str, TuyaDevice]]):
                         self.hass, self.config_entry.entry_id, not_authorized=True
                     )
                 raise ServiceValidationError(
-                    "Tuya rejected the device command",
                     translation_domain=DOMAIN,
                     translation_key="command_not_authorized",
                 ) from err
-            raise
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="command_failed",
+            ) from err
+        except (TuyaApiError, TuyaConnectionError) as err:
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="command_failed",
+            ) from err
         if self.config_entry.entry_id:
             async_update_command_issue(
                 self.hass, self.config_entry.entry_id, not_authorized=False

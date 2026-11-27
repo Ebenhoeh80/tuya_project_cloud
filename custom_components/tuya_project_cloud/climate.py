@@ -17,6 +17,8 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from .entity import TuyaProjectCloudEntity
 from .utils import coerce_float
 
+PARALLEL_UPDATES = 1
+
 CLIMATE_CATEGORIES = {"kt", "ykq", "hvac"}
 MODE_VALUES = {
     "auto": HVACMode.AUTO,

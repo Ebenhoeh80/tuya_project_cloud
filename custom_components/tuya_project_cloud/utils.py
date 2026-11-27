@@ -54,6 +54,13 @@ def redact_value(value: Any) -> Any:
     return value
 
 
+def error_label(err: BaseException) -> str:
+    """Describe an error for debug logs without echoing its raw message."""
+    name = type(err).__name__
+    code = getattr(err, "code", None)
+    return f"{name}(code={code})" if isinstance(code, int) else name
+
+
 def coerce_float(value: Any) -> float | None:
     """Convert a DPS value to float without raising on unexpected Tuya data."""
     if value is None or isinstance(value, bool):

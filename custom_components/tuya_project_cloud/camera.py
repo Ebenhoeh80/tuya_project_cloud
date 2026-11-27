@@ -8,12 +8,12 @@ from typing import TYPE_CHECKING
 from homeassistant.components.camera import Camera, CameraEntityFeature
 from homeassistant.const import MATCH_ALL
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .api import TuyaApiError, TuyaDevice
-from .const import CONF_ENABLE_CAMERA, DEFAULT_ENABLE_CAMERA, DOMAIN
+from .const import CONF_ENABLE_CAMERA, DEFAULT_ENABLE_CAMERA
+from .entity import tuya_device_info
 from .utils import redact_identifier
 
 if TYPE_CHECKING:
@@ -23,6 +23,8 @@ if TYPE_CHECKING:
     )
 
 _LOGGER = logging.getLogger(__name__)
+
+PARALLEL_UPDATES = 0
 
 # "sp" is the Tuya category for IP cameras; the door viewer was verified live.
 CAMERA_CATEGORIES = frozenset({"sp"})
@@ -63,12 +65,7 @@ class TuyaCamera(CoordinatorEntity["TuyaProjectCloudCoordinator"], Camera):
         Camera.__init__(self)
         self._device_id = device.id
         self._attr_unique_id = f"{device.id}_live"
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, device.id)},
-            name=device.name,
-            manufacturer="Tuya",
-            model=device.product_id,
-        )
+        self._attr_device_info = tuya_device_info(device)
 
     @property
     def _tuya_device(self) -> TuyaDevice | None:
@@ -81,9 +78,11 @@ class TuyaCamera(CoordinatorEntity["TuyaProjectCloudCoordinator"], Camera):
 
     @property
     def available(self) -> bool:
-        """Return availability based on coordinator and device online state."""
+        """Match the other platforms: online and successfully refreshed."""
         device = self._tuya_device
-        return super().available and bool(device and device.online)
+        return super().available and bool(
+            device and device.online and device.last_update_success
+        )
 
     @property
     def is_streaming(self) -> bool:
@@ -93,7 +92,7 @@ class TuyaCamera(CoordinatorEntity["TuyaProjectCloudCoordinator"], Camera):
     async def stream_source(self) -> str | None:
         """Allocate a fresh signed URL; never expose or log it as an attribute."""
         device = self._tuya_device
-        if not device or not device.online:
+        if not device or not device.online or not device.last_update_success:
             return None
         if self.stream is not None and not self.stream.available:
             self.stream = None

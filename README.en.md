@@ -8,9 +8,11 @@ A Home Assistant custom integration that controls devices **exclusively through 
 
 Feasibility proven live on 2026-11-27: token, device list, status, functions and an idempotent command (`POST /v1.0/devices/{id}/commands`) all work with the project token alone. Also implemented live: the `dé EV Charger` returns 23 DPS values via the IoT Core thing shadow, mapped to 16 sensors; the door viewer delivers a short-lived HLS live stream via `stream/actions/allocate`. See the [feasibility report](docs/machbarkeit.en.md), sections 10 and 11.
 
-State 0.2.4: 81 tests passing, Ruff clean, HACS/Hassfest/CI green. The HACS installation with 8 devices, 16 charger sensors and the HLS camera was upgraded to 0.2.4; readback: config entry `loaded`, 73/73 entity IDs unchanged (0 missing, 0 new), no Tuya issues in system health or log.
+State 0.2.5: 108 tests passing, Ruff clean, minimum Home Assistant version 2025.8.0. The 0.2.4 installation with 8 devices, 16 charger sensors and the HLS camera was verified live (config entry `loaded`, 73/73 entity IDs unchanged, no Tuya issues); the upgrade to 0.2.5 is validated in the release run.
 
 ## Prerequisites
+
+- Home Assistant 2025.8.0 or newer (required by `OptionsFlowWithReload`).
 
 1. Create a Tuya IoT project in the [Tuya Developer Console](https://platform.tuya.com/).
 2. Note the Access ID and Access Secret.
@@ -55,7 +57,7 @@ Entities are generated dynamically from each device's DPS functions and status c
 | Sensor (shadow) | Devices with IoT Core `x_*` properties: work state, voltages, currents, power, energy, charge current, firmware; new sensors appear as soon as data arrives |
 | Camera | Category `sp` or functions containing `stream`: HLS live view |
 
-Unknown codes are neither guessed nor controlled. For the charger only observed values with plausible scaling are mapped; ambiguous durations and raw counters are omitted. No write commands are sent to the wallbox.
+Unknown codes are neither guessed nor controlled. DPS values appear as raw values with readable names because scaling is not verified per device. For the charger only observed shadow values with plausible scaling are mapped; ambiguous durations and raw counters are omitted. No write commands are sent to the wallbox.
 
 ## Technical limits
 
