@@ -78,7 +78,7 @@ Die Live-Tests haben gezeigt, dass die `v1.0/devices`-Familie für verlinkte Ger
 4. **Entities**: Dynamisch aus `functions`/`status` + DPS-Codes. Plattformen: Switch, Sensor, Light, Climate, Cover, Number, Camera; zusätzliche Shadow-Sensoren aus dem IoT-Core-Thing-Shadow. Entity-Descriptions mit `device_class`, `native_unit_of_measurement`, `EntityCategory`.
 5. **Geräte/Range**: `DeviceInfo` pro Tuya-Gerät, `identifiers={(DOMAIN, device_id)}`; Child Devices wo zutreffend.
 6. **Diagnostics/Repairs**: Redaction von Tokens, Secrets, DPS-Werten mit personenbezogenen Daten; Repairs für Auth-Fehler, falsche Region, fehlende API-Autorisierung.
-7. **Tests**: `pytest-homeassistant-custom-component`, Zwischenstand 0.1.0: 36 Tests grün, 84 % Gesamt-Coverage; Stand 0.2.6: 117 Tests grün, `ruff check`/`format` sauber. Config-Flow, Coordinator, Entity-Mapping, Kamera, Redaction, Fehlerpfade.
+7. **Tests**: `pytest-homeassistant-custom-component`, Zwischenstand 0.1.0: 36 Tests grün, 84 % Gesamt-Coverage; Stand 0.2.8: 152 Tests grün, `ruff check`/`format` sauber. Config-Flow, Coordinator, Entity-Mapping, Kamera, Redaction, Fehlerpfade.
 
 ## 8. Live-Beweis (2026-11-27) – Important rule erfüllt
 
@@ -118,7 +118,7 @@ Der Befehl war wieder **idempotent** (exakt der gelesene Wert wurde zurückgesch
 
 | Prüfung | Ergebnis |
 |---|---|
-| Unit-Tests (WSL, Python 3.13, `pytest-homeassistant-custom-component`) | **117 passed** (Stand 0.2.6) |
+| Unit-Tests (WSL, Python 3.13, `pytest-homeassistant-custom-component`) | **152 passed** (Stand 0.2.8) |
 | `ruff check` / `ruff format --check` | **All checks passed** / sauber |
 | Live-Smoke-Test des eigenen Clients | **Erfolg** (siehe oben) |
 | Live-Probe Shadow/Stream des eigenen Clients | **Erfolg** (8 Geräte, 23 DPS, HLS-Allokation; siehe Abschnitt 11) |
@@ -140,7 +140,7 @@ Beide Stream-Endpunkte sind im offiziellen User Permission Package (Stand 05.11.
 
 **Einordnung:** Die historische HA-Entität `camera.turspion` lieferte 404-Streams und riss am 06.10.2026 das Setup in `setup_error` (ADR 0009 im SecondBrain-Wiki). Die damalige Ursache bleibt unbelegt; die OpenAPI liefert den Stream mit dem Projekt-Token jetzt aber echt. Eine `camera`-Plattform ist für diese Integration damit machbar und in 0.2.0 **implementiert** (siehe Abschnitt 11).
 
-**Umsetzung:** `stream_source()` allokiert bei jedem Start neu; die URL bleibt nur im Prozess – nie in Log, Diagnostics, Recorder oder Config Entry. WebRTC wird nicht angeboten; optional go2rtc-`tuya://` für Gegensprechen. Gültigkeitsdauer der URL und HLS-Stabilität in einer echten HA-Instanz sind weiterhin ungetestet.
+**Umsetzung:** `stream_source()` allokiert bei jedem Start neu; die URL bleibt nur im Prozess – nie in Log, Diagnostics, Recorder oder Config Entry. Seit 0.2.8 wird eine vom HA-Stream-Worker als unbrauchbar gemeldete Quelle über `Stream.update_source()` automatisch durch eine neue signierte URL ersetzt; HA würde den Stream sonst mit derselben abgelaufenen URL endlos retryen. WebRTC wird nicht angeboten; optional go2rtc-`tuya://` für Gegensprechen.
 
 Nachweis im SecondBrain-Wiki: `wiki/fragen/2026-11-27-tuya-tuer-spion-livebild.md` (nicht Teil dieses Repos).
 

@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock
+import logging
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from homeassistant.components.camera import CameraEntityFeature
@@ -95,3 +96,197 @@ async def test_camera_stream_error_is_not_fatal() -> None:
     )
     await camera_setup(MagicMock(), entry, lambda entities: added.extend(entities))
     assert await added[0].stream_source() is None
+
+
+def _stream(*, available: bool = False) -> MagicMock:
+    """Return a fake HA stream for renewal tests."""
+    stream = MagicMock()
+    stream.available = available
+    return stream
+
+
+async def _camera_with_stream(entry: MagicMock, stream: MagicMock) -> MagicMock:
+    """Set up one camera and attach a fake stream to it."""
+    added: list = []
+    await camera_setup(MagicMock(), entry, lambda entities: added.extend(entities))
+    camera = added[0]
+    camera.stream = stream
+    return camera
+
+
+@pytest.mark.asyncio
+async def test_expired_stream_source_is_renewed() -> None:
+    """A failed worker gets a fresh signed URL instead of retrying a stale one."""
+    entry = _entry()
+    stream = _stream()
+    camera = await _camera_with_stream(entry, stream)
+    await camera._async_renew_stream_source()
+    entry.runtime_data.client.async_allocate_stream.assert_awaited_once_with(
+        "cam1", "hls"
+    )
+    stream.update_source.assert_called_once_with("https://example.invalid/live.m3u8")
+
+
+@pytest.mark.asyncio
+async def test_available_stream_is_not_renewed() -> None:
+    """A healthy stream keeps its source and does not allocate again."""
+    entry = _entry()
+    stream = _stream(available=True)
+    camera = await _camera_with_stream(entry, stream)
+    await camera._async_renew_stream_source()
+    entry.runtime_data.client.async_allocate_stream.assert_not_awaited()
+    stream.update_source.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_renewal_is_throttled_and_recovers_after_interval() -> None:
+    """Repeated failures do not hammer Tuya, but still renew later."""
+    entry = _entry()
+    stream = _stream()
+    camera = await _camera_with_stream(entry, stream)
+    clock = {"now": 0.0}
+    with patch(
+        "custom_components.tuya_project_cloud.camera.time.monotonic",
+        side_effect=lambda: clock["now"],
+    ):
+        await camera._async_renew_stream_source()
+        await camera._async_renew_stream_source()
+        clock["now"] = 100.0
+        await camera._async_renew_stream_source()
+    assert entry.runtime_data.client.async_allocate_stream.await_count == 2
+    assert stream.update_source.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_renewal_allocation_error_is_not_fatal() -> None:
+    """A failed renewal leaves the stream untouched and raises nothing."""
+    entry = _entry()
+    entry.runtime_data.client.async_allocate_stream = AsyncMock(
+        side_effect=TuyaApiError("denied")
+    )
+    stream = _stream()
+    camera = await _camera_with_stream(entry, stream)
+    await camera._async_renew_stream_source()
+    stream.update_source.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_offline_camera_does_not_renew() -> None:
+    """An offline or stale device never triggers a new stream allocation."""
+    entry = _entry(online=False)
+    stream = _stream()
+    camera = await _camera_with_stream(entry, stream)
+    await camera._async_renew_stream_source()
+    entry.runtime_data.client.async_allocate_stream.assert_not_awaited()
+    stream.update_source.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_stream_state_callback_triggers_renewal() -> None:
+    """HA's state callback is retained and starts a renewal on failure."""
+    entry = _entry()
+    stream = _stream()
+    camera = await _camera_with_stream(entry, stream)
+    camera.hass = MagicMock()
+    camera.async_write_ha_state = MagicMock()
+    tasks: list = []
+    camera.hass.async_create_task = lambda coro: tasks.append(coro)
+    with patch(
+        "homeassistant.components.camera.Camera.async_create_stream",
+        new_callable=AsyncMock,
+        return_value=stream,
+    ) as create_stream:
+        assert await camera.async_create_stream() is stream
+    create_stream.assert_awaited_once()
+    stream.set_update_callback.assert_called_once()
+    callback = stream.set_update_callback.call_args.args[0]
+    callback()
+    camera.async_write_ha_state.assert_called_once()
+    assert len(tasks) == 1
+    await tasks[0]
+    entry.runtime_data.client.async_allocate_stream.assert_awaited_once_with(
+        "cam1", "hls"
+    )
+    stream.update_source.assert_called_once_with("https://example.invalid/live.m3u8")
+
+
+@pytest.mark.asyncio
+async def test_callback_is_reinstalled_on_repeated_stream_creation() -> None:
+    """A later HA callback overwrite cannot disable URL renewal."""
+    entry = _entry()
+    stream = _stream()
+    camera = await _camera_with_stream(entry, stream)
+    camera.hass = MagicMock()
+    camera.async_write_ha_state = MagicMock()
+    tasks: list = []
+    camera.hass.async_create_task = lambda coro: tasks.append(coro)
+
+    async def create_stream(*args: object, **kwargs: object) -> MagicMock:
+        # Older HA versions restore their own callback on each call.
+        stream.set_update_callback(MagicMock())
+        return stream
+
+    with patch(
+        "homeassistant.components.camera.Camera.async_create_stream",
+        new=create_stream,
+    ):
+        await camera.async_create_stream()
+        await camera.async_create_stream()
+    # The mocked base re-hooks once per call, our override re-hooks once too.
+    assert stream.set_update_callback.call_count == 4
+    callback = stream.set_update_callback.call_args.args[0]
+    callback()
+    assert len(tasks) == 1
+    await tasks[0]
+    stream.update_source.assert_called_once_with("https://example.invalid/live.m3u8")
+
+
+@pytest.mark.asyncio
+async def test_renewal_applies_fresh_url_if_worker_recovers_during_allocation() -> None:
+    """A recovered worker must not cause an already allocated URL to be dropped."""
+    entry = _entry()
+    stream = _stream()
+    camera = await _camera_with_stream(entry, stream)
+
+    async def allocate(*args: object, **kwargs: object) -> str:
+        stream.available = True
+        return "https://example.invalid/live.m3u8"
+
+    entry.runtime_data.client.async_allocate_stream = AsyncMock(side_effect=allocate)
+    await camera._async_renew_stream_source()
+    stream.update_source.assert_called_once_with("https://example.invalid/live.m3u8")
+
+
+@pytest.mark.asyncio
+async def test_renewal_does_not_touch_a_replaced_stream() -> None:
+    """A URL allocated for a detached stream is not applied to the new one."""
+    entry = _entry()
+    stream = _stream()
+    camera = await _camera_with_stream(entry, stream)
+
+    async def allocate(*args: object, **kwargs: object) -> str:
+        camera.stream = _stream()
+        return "https://example.invalid/live.m3u8"
+
+    entry.runtime_data.client.async_allocate_stream = AsyncMock(side_effect=allocate)
+    await camera._async_renew_stream_source()
+    stream.update_source.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_renewal_logs_no_url_or_device_id(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Even debug messages must not expose the signed URL or device identifier."""
+    entry = _entry()
+    entry.runtime_data.client.async_allocate_stream = AsyncMock(
+        side_effect=TuyaApiError("denied")
+    )
+    stream = _stream()
+    camera = await _camera_with_stream(entry, stream)
+    with caplog.at_level(
+        logging.DEBUG, logger="custom_components.tuya_project_cloud.camera"
+    ):
+        await camera._async_renew_stream_source()
+    assert "cam1" not in caplog.text
+    assert "https://example.invalid" not in caplog.text

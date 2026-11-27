@@ -1,5 +1,25 @@
 # Changelog / Änderungen
 
+## [0.2.8] - 2026-11-27
+
+### Deutsch
+
+- Behebt das Problem, dass ein Kamera-Livebild nach kurzer Zeit stehen blieb und die Oberfläche danach `mpegts: wrong sync byte` sowie `DESCRIBE failed: 404` meldete. Ursache war nicht WebRTC, sondern eine abgelaufene signierte HLS-URL: Der HA-Stream-Worker retryt eine fehlgeschlagene Quelle unbegrenzt mit exakt derselben URL, ohne `stream_source()` erneut aufzurufen.
+- Die Kamera verfolgt jetzt den vom HA-Stream-Worker gemeldeten Verfügbarkeitswechsel und ersetzt eine unbrauchbar gewordene Quelle über die öffentliche API `Stream.update_source()` durch eine neu allokierte signierte URL. Ein Mindestabstand von 10 Sekunden verhindert wiederholte Allokationen bei kurz aufeinanderfolgenden Fehlern; bei offline- oder veraltetem Gerät wird keine URL angefordert.
+- Signierte URLs bleiben weiterhin nur im Speicher. Die Integration schreibt sie nicht in State, Attribute, eigene Logs, Recorder oder Diagnostics; ihre Fehlermeldungen nutzen pseudonymisierte Gerätekennungen.
+- Alle bestehenden Entity-IDs, Unique-IDs und Automationen bleiben unverändert. Es werden keine Geräte-Schreibbefehle eingeführt; die Wallbox bleibt read-only. WebRTC wird weiterhin nicht angeboten (`device not supports`); der lokale 404 war ein Folgefehler der ungültigen HLS-Daten.
+- Qualität: 152 Tests grün, Ruff und Formatierung sauber. Unabhängige Code-Freigabe nach Gegenprüfung der HA-Quellen ohne verbleibende Blocker.
+
+### English
+
+- Fixes the live view stopping after a short time, followed by `mpegts: wrong sync byte` and `DESCRIBE failed: 404` in the UI. The cause was not WebRTC but an expired signed HLS URL: HA's stream worker retries a failed source indefinitely with exactly the same URL and does not call `stream_source()` again.
+- The camera now observes the availability change reported by HA's stream worker and replaces an unusable source with a newly allocated signed URL via the public `Stream.update_source()` API. A ten-second minimum interval avoids repeated allocations for closely spaced failures; no URL is requested while the device is offline or stale.
+- Signed URLs still stay in memory only. The integration does not write them to state, attributes, its own logs, recorder or diagnostics; its error messages use pseudonymized device identifiers.
+- All existing entity IDs, unique IDs and automations remain unchanged. No device write commands are introduced; the wallbox stays read-only. WebRTC is still not offered (`device not supports`); the local 404 was a follow-up error caused by invalid HLS data.
+- Quality: 152 tests passing, Ruff and formatting clean. Independent code approval after verification against the HA sources, with no remaining blockers.
+
+---
+
 ## [0.2.7] - 2026-11-27
 
 ### Deutsch

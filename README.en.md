@@ -8,7 +8,7 @@ A Home Assistant custom integration that controls devices **exclusively through 
 
 Feasibility proven live on 2026-11-27: token, device list, status, functions and an idempotent command (`POST /v1.0/devices/{id}/commands`) all work with the project token alone. Also implemented live: the `dé EV Charger` returns 23 DPS values via the IoT Core thing shadow, mapped to 16 sensors; the door viewer delivers a short-lived HLS live stream via `stream/actions/allocate`. See the [feasibility report](docs/machbarkeit.en.md), sections 10 and 11.
 
-State 0.2.6: 117 tests passing, Ruff clean, minimum Home Assistant version 2025.8.0. The live installation covers 8 devices with 73/73 unchanged entity IDs, config entry `loaded` and 0 repairs. 0.2.6 fixes the `dé EV Charger` being shown as unavailable despite fresh IoT Core shadow values: Tuya rejects the legacy `status`/`functions` endpoints for this device (errno `2003`/`2009`), so shadow sensors now derive their availability from the actual shadow data. Existing entity IDs, automations and configurations remain unchanged.
+State 0.2.8: 152 tests passing, Ruff clean, minimum Home Assistant version 2025.8.0. The live installation covers 8 devices with 73/73 unchanged entity IDs, config entry `loaded` and 0 repairs. 0.2.6 fixes the `dé EV Charger` being shown as unavailable despite fresh IoT Core shadow values: Tuya rejects the legacy `status`/`functions` endpoints for this device (errno `2003`/`2009`), so shadow sensors now derive their availability from the actual shadow data. 0.2.8 automatically renews expired signed HLS stream sources. Existing entity IDs, automations and configurations remain unchanged.
 
 ## Prerequisites
 
@@ -66,7 +66,7 @@ Unknown codes are neither guessed nor controlled. For the four verified integer 
 - Devices must be visible in the project via "Link App Account".
 - Tuya rate limits apply per project (e.g. commands ~4/s).
 - Diagnostics redact tokens, secrets, `local_key`, UID, location data, stream URLs and `m3u8`; device IDs are pseudonymized.
-- Live view runs as a `camera` platform using HLS; the signed URL is allocated anew for each stream start, kept only in memory and never written to state, attributes, logs, recorder or diagnostics. WebRTC is not offered (`device not supports`). Active playback and URL renewal after expiry remain `(unverified)`.
+- Live view runs as a `camera` platform using HLS; the signed URL is allocated anew for each stream start and kept only in memory. The integration does not write it to state, attributes, its own logs, recorder or diagnostics. When HA's stream worker reports an unusable source, the URL is renewed automatically (10 s minimum interval). WebRTC is not offered (`device not supports`).
 - DPS scaling follows `value / 10**scale` with `scale` from the device's specifications; units and classes of the four verified codes are fixed. Without a reliable specification the raw value stays visible.
 - Scaling of `x_*` values comes from community references, not from the manufacturer; `(unverified)`.
 

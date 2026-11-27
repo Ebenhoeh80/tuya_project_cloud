@@ -8,7 +8,7 @@ Eine Home-Assistant-Custom-Integration, die Geräte **ausschließlich über die 
 
 Machbarkeit am 27.11.2026 live bewiesen: Token, Geräteliste, Status, Funktionen und ein idempotenter Steuerbefehl (`POST /v1.0/devices/{id}/commands`) funktionieren mit dem reinen Projekt-Token. Ebenfalls live umgesetzt: Der `dé EV Charger` liefert über den IoT-Core-Shadow 23 DPS-Werte, aus denen 16 Sensoren entstehen; der Türspion liefert über `stream/actions/allocate` ein kurzlebiges HLS-Livebild. Siehe [Machbarkeitsbericht](docs/machbarkeit.md), Abschnitte 10 und 11.
 
-Stand 0.2.6: 117 Tests grün, Ruff sauber, Mindestversion Home Assistant 2025.8.0. Die Live-Installation umfasst 8 Geräte mit 73/73 unveränderten Entity-IDs, Config Entry `loaded` und 0 Repairs. 0.2.6 behebt, dass der `dé EV Charger` trotz frischer IoT-Core-Shadow-Werte als unverfügbar erschien: Tuya lehnt für dieses Gerät die klassischen `status`/`functions`-Endpunkte ab (errno `2003`/`2009`), weshalb die Shadow-Sensoren ihre Verfügbarkeit jetzt aus den tatsächlichen Shadow-Daten ableiten. Bestehende Entity-IDs, Automationen und Konfigurationen bleiben unverändert.
+Stand 0.2.8: 152 Tests grün, Ruff sauber, Mindestversion Home Assistant 2025.8.0. Die Live-Installation umfasst 8 Geräte mit 73/73 unveränderten Entity-IDs, Config Entry `loaded` und 0 Repairs. 0.2.6 behebt, dass der `dé EV Charger` trotz frischer IoT-Core-Shadow-Werte als unverfügbar erschien: Tuya lehnt für dieses Gerät die klassischen `status`/`functions`-Endpunkte ab (errno `2003`/`2009`), weshalb die Shadow-Sensoren ihre Verfügbarkeit jetzt aus den tatsächlichen Shadow-Daten ableiten. 0.2.8 erneuert abgelaufene signierte HLS-Streamquellen automatisch. Bestehende Entity-IDs, Automationen und Konfigurationen bleiben unverändert.
 
 ## Voraussetzungen
 
@@ -66,7 +66,7 @@ Unbekannte Codes werden nicht geraten und nicht gesteuert. Für die vier verifiz
 - Geräte müssen über „Link App Account" im Projekt sichtbar sein.
 - Tuya-Rate-Limits gelten pro Projekt (z. B. Commands ~4/s).
 - Diagnostics redaktieren Tokens, Secrets, `local_key`, UID, Standortdaten, Stream-URLs und `m3u8`; Geräte-IDs werden pseudonymisiert.
-- Livevideo läuft als `camera`-Plattform mit HLS; die signierte URL wird pro Streamstart neu allokiert, nur im Speicher gehalten und nie in State, Attributen, Logs, Recorder oder Diagnostics geschrieben. WebRTC wird nicht angeboten (`device not supports`). Aktive Wiedergabe und URL-Erneuerung nach Ablauf bleiben `(unbelegt)`.
+- Livevideo läuft als `camera`-Plattform mit HLS; die signierte URL wird pro Streamstart neu allokiert und nur im Speicher gehalten. Die Integration schreibt sie nicht in State, Attribute, eigene Logs, Recorder oder Diagnostics. Meldet der HA-Stream-Worker eine unbrauchbare Quelle, wird die URL automatisch erneuert (Mindestabstand 10 s). WebRTC wird nicht angeboten (`device not supports`).
 - Die DPS-Skalierung folgt `Wert / 10**scale` mit dem `scale` aus den Specifications des Geräts; Einheiten und Klassen der vier verifizierten Codes sind fest hinterlegt. Ohne verlässliche Specification bleibt der Rohwert sichtbar.
 - Die Skalierung der `x_*`-Werte stammt aus Community-Referenzen, nicht vom Hersteller; `(unbelegt)`.
 

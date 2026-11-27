@@ -23,7 +23,7 @@ Home Assistant custom integration that uses **exclusively the Tuya OpenAPI** wit
 | Diagnostics with redaction | Tokens, secrets and personal DPS values must never appear in diagnostics. |
 | IoT Core thing shadow for charger data | The classic `/status`, `/functions` and `/specifications` return no values for the charger; only the thing shadow is authorized and returns 23 DPS. |
 | Flat sensors instead of JSON attributes | `x_metrics` and `x_charger_info` are split in `shadow.py`, scaled and exposed as separate sensors with `device_class`/unit/`state_class`. |
-| Camera with a fresh HLS URL | `stream_source()` allocates a new URL per stream start; the URL stays in memory only and never in state/attributes/recorder. HA's `Camera.async_create_stream()` provides the lock. |
+| Camera with a fresh HLS URL | `stream_source()` allocates a new URL per stream start; the URL stays in memory only and never in state/attributes/recorder. HA's `Camera.async_create_stream()` provides the lock. When the worker reports a failure, `Stream.update_source()` replaces the expired source (10 s minimum interval) because HA otherwise retries the same URL forever. |
 | `OptionsFlowWithReload` | Shadow and camera options require rebuilding platforms; HA reloads the entry after saving. |
 
 ## 3. Data flow
@@ -130,6 +130,7 @@ The four verified DPS integer codes (`cur_power`, `cur_voltage`, `cur_current`, 
 | Timeout / 5xx / 429 | `ConfigEntryNotReady` at setup, `UpdateFailed` in coordinator, backoff |
 | Wrong region → empty list | Repair issue "region_mismatch" |
 | Stream allocation failed | `stream_source()` returns `None`; setup and other entities stay healthy |
+| Signed URL expired / invalid HLS data | The worker reports unavailability; the camera allocates a new URL and calls `stream.update_source()` (10 s minimum interval) |
 
 ## 8. Tests
 
@@ -138,10 +139,10 @@ The four verified DPS integer codes (`cur_power`, `cur_voltage`, `cur_current`, 
 - `tests/test_coordinator.py`: device mapping, auth→reauth, shadow refresh and retry, stale devices, repair throttling, command 1106, IoT Core authorization.
 - `tests/test_init.py`: setup/error paths/unload, `runtime_data`, repair cleanup, forwarding of the `camera` platform.
 - `tests/test_entities.py`: DPS and shadow→entity mapping, dynamic shadow sensors, stable light/cover codes, switch code compatibility.
-- `tests/test_camera.py`: fresh HLS URL, offline case, option, stream error.
+- `tests/test_camera.py`: fresh HLS URL, offline case, option, stream error, renewal of expired sources, throttling and state callback.
 - `tests/test_diagnostics.py`: redaction including stream URL/`m3u8`, shadow codes only in output.
 
-Current state: 117 tests green, `ruff check` and `ruff format --check` clean (WSL, Python 3.13). The minimum version is Home Assistant 2025.8.0 because `OptionsFlowWithReload` was introduced there. `pytest.ini` sets `asyncio_mode = auto`, `strict-markers` and `strict-config`; `validate.yml` uses concurrency and timeouts. Camera tests additionally need `PyTurboJPEG` because HA imports `homeassistant.components.camera`.
+Current state: 152 tests green, `ruff check` and `ruff format --check` clean (WSL, Python 3.13). The minimum version is Home Assistant 2025.8.0 because `OptionsFlowWithReload` was introduced there. `pytest.ini` sets `asyncio_mode = auto`, `strict-markers` and `strict-config`; `validate.yml` uses concurrency and timeouts. Camera tests additionally need `PyTurboJPEG` because HA imports `homeassistant.components.camera`.
 
 ## 9. Iteration plan
 

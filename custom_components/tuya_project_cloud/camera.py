@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
+import time
 from typing import TYPE_CHECKING
 
 from homeassistant.components.camera import Camera, CameraEntityFeature
+from homeassistant.components.stream import Stream
 from homeassistant.const import MATCH_ALL
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
@@ -25,6 +28,10 @@ if TYPE_CHECKING:
 _LOGGER = logging.getLogger(__name__)
 
 PARALLEL_UPDATES = 0
+
+# Signed HLS URLs are short-lived. HA retries a failed stream with the same
+# source until it works, so an expired URL has to be replaced explicitly.
+MIN_SOURCE_RENEWAL_INTERVAL = 10.0
 
 # "sp" is the Tuya category for IP cameras; the door viewer was verified live.
 CAMERA_CATEGORIES = frozenset({"sp"})
@@ -66,6 +73,8 @@ class TuyaCamera(CoordinatorEntity["TuyaProjectCloudCoordinator"], Camera):
         self._device_id = device.id
         self._attr_unique_id = f"{device.id}_live"
         self._attr_device_info = tuya_device_info(device)
+        self._renewal_lock: asyncio.Lock | None = None
+        self._last_renewal: float | None = None
 
     @property
     def _tuya_device(self) -> TuyaDevice | None:
@@ -88,6 +97,59 @@ class TuyaCamera(CoordinatorEntity["TuyaProjectCloudCoordinator"], Camera):
     def is_streaming(self) -> bool:
         """Report whether a stream worker is currently attached."""
         return bool(self.stream and self.stream.available)
+
+    async def async_create_stream(self) -> Stream | None:
+        """Create a stream and observe its availability for URL renewal."""
+        stream = await super().async_create_stream()
+        if stream is not None:
+            # HA uses this callback for state updates; keep that behaviour and
+            # add our own reaction when the worker reports an unusable source.
+            # Re-hook on every call, because HA may restore its own callback.
+            stream.set_update_callback(self._async_stream_state_changed)
+        return stream
+
+    @callback
+    def _async_stream_state_changed(self) -> None:
+        """Write state and renew a stream whose source has become unusable."""
+        self.async_write_ha_state()
+        if self.stream is not None and not self.stream.available:
+            self.hass.async_create_task(self._async_renew_stream_source())
+
+    async def _async_renew_stream_source(self) -> None:
+        """Replace an expired signed HLS URL without exposing it anywhere."""
+        stream = self.stream
+        if stream is None or stream.available:
+            return
+        if self._renewal_lock is None:
+            self._renewal_lock = asyncio.Lock()
+        async with self._renewal_lock:
+            stream = self.stream
+            if stream is None or stream.available:
+                return
+            now = time.monotonic()
+            if (
+                self._last_renewal is not None
+                and now - self._last_renewal < MIN_SOURCE_RENEWAL_INTERVAL
+            ):
+                return
+            device = self._tuya_device
+            if not device or not device.online or not device.last_update_success:
+                return
+            try:
+                source = await self.coordinator.client.async_allocate_stream(
+                    self._device_id, "hls"
+                )
+            except TuyaApiError:
+                _LOGGER.debug(
+                    "Cannot renew a stream for camera %s (%s)",
+                    redact_identifier(self._device_id),
+                    type(self).__name__,
+                )
+                return
+            if self.stream is not stream:
+                return
+            stream.update_source(source)
+            self._last_renewal = time.monotonic()
 
     async def stream_source(self) -> str | None:
         """Allocate a fresh signed URL; never expose or log it as an attribute."""
