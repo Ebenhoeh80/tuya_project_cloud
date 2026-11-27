@@ -6,19 +6,19 @@
 
 - Behebt einen Fehler, durch den der `dé EV Charger` trotz vorhandener IoT-Core-Shadow-Daten als unverfügbar angezeigt wurde. Tuya lehnt die klassischen Endpunkte `status`, `functions` und `specifications` für dieses Gerät mit den errno `2003`/`2009` („function not support" bzw. „not support this device") ab; die Werte liegen jedoch weiterhin frisch im Thing-Shadow vor.
 - Die Antwortcodes `2003`/`2009` werden nun als erwartetes Merkmal von IoT-Core-only-Geräten erkannt. Ein fehlgeschlagener Legacy-Status markiert das Gerät nicht mehr als Fehler, löst keine Repairs aus und verändert keine bestehenden Entity-IDs, Automationen oder Konfigurationen.
-- Sensoren aus dem Thing-Shadow richten ihre Verfügbarkeit nach den tatsächlich vorhandenen Shadow-Daten statt nach dem Legacy-Status. Damit bleiben die 16 Lader-Sensoren verfügbar, sobald der Shadow Werte liefert; echte Shadow-Fehler und offline-Geräte bleiben weiterhin `unavailable`.
+- Sensoren aus dem Thing-Shadow richten ihre Verfügbarkeit nach den tatsächlich vorhandenen und erfolgreich aktualisierten Shadow-Daten statt nach dem Legacy-Status. Damit bleiben die 16 Lader-Sensoren verfügbar, sobald der Shadow Werte liefert; echte Shadow-Fehler und offline-Geräte bleiben weiterhin `unavailable`.
 - Ein fehlgeschlagener oder abgelehnter Shadow-Abruf markiert die Sensoren jetzt ausdrücklich als nicht aktuell; veraltete Werte bleiben nicht `available`. Wird der Legacy-Status nicht unterstützt, wird ein zuvor gespeicherter Status verworfen, damit keine alten DPS-Werte als aktuell erscheinen. Echte IoT-Core-Berechtigungsfehler lösen weiterhin einen Repair aus.
 - Diagnostics weist nun beide Aktualisierungsstatusse (`last_update_success`, `shadow_last_update_success`) pro Gerät aus; ohne sensible Werte. Echte Fehler (Autorisierung, Netzwerk, Rate-Limits, ungültige Antworten) werden unverändert erkannt; Redaction und Pseudonymisierung bleiben intakt. Es wurden keine Übersetzungsschlüssel geändert.
 - Qualität: 117 Tests grün, Ruff und Formatierung sauber. Unabhängige Freigabe durch Claude Sonnet 5.5 ohne verbleibende Blocker.
 
 ### English
 
-- Fixes an issue where the `dé EV Charger` was shown as unavailable even though fresh IoT Core thing-shadow data was present. Tuya rejects the legacy `status`, `functions` and `specifications` endpoints for this device with errno `2003`/`2009` ("function not support" / "not support this device"), while the thing shadow keeps returning current values.
+- Fixes an issue where the `dé EV Charger` was shown as unavailable despite the presence of fresh IoT Core thing-shadow data. Tuya rejects the legacy `status`, `functions` and `specifications` endpoints for this device with errno `2003`/`2009` ("function not support" / "not support this device"), while the thing shadow keeps returning current values.
 - Response codes `2003`/`2009` are now recognized as an expected trait of IoT Core-only devices. A rejected legacy status no longer marks the device as failed, raises repairs or changes any existing entity IDs, automations or configurations.
-- Thing-shadow sensors base their availability on the actual shadow data instead of the legacy status. The 16 charger sensors therefore become available as soon as the shadow returns values; genuine shadow failures and offline devices remain `unavailable`.
+- Thing-shadow sensors base their availability on the actually present, successfully refreshed shadow data instead of the legacy status. The 16 charger sensors therefore become available as soon as the shadow returns values; genuine shadow failures and offline devices remain `unavailable`.
 - A failed or denied shadow refresh now explicitly marks the sensors as stale; old values are no longer reported as available. When the legacy status is unsupported, a previously stored status is discarded so old DPS values cannot appear as current. Genuine IoT Core permission errors still raise a repair.
 - Diagnostics now reports both freshness flags (`last_update_success`, `shadow_last_update_success`) per device; no sensitive values are included. Real errors (authorization, network, rate limits, invalid responses) are still detected; redaction and pseudonymization remain intact. No translation keys were changed.
-- Quality: 113 tests passing, Ruff and formatting clean. Independent approval by Claude Sonnet 5.5 with no remaining blockers.
+- Quality: 117 tests passing, Ruff and formatting clean. Independent approval by Claude Sonnet 5.5 with no remaining blockers.
 
 ---
 
