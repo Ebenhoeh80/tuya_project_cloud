@@ -9,6 +9,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .entity import TuyaProjectCloudEntity
+from .utils import coerce_float
 
 EXCLUDED_CODES = {
     "bright_value",
@@ -66,9 +67,8 @@ class TuyaNumber(TuyaProjectCloudEntity, NumberEntity):
 
     @property
     def native_value(self) -> float | None:
-        """Return the current value."""
-        value = self.dps_value
-        return float(value) if value is not None else None
+        """Return the current value, tolerating unexpected Tuya payloads."""
+        return coerce_float(self.dps_value)
 
     async def async_set_native_value(self, value: float) -> None:
         """Set the value."""

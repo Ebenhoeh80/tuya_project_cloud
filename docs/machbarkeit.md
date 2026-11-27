@@ -78,7 +78,7 @@ Die Live-Tests haben gezeigt, dass die `v1.0/devices`-Familie für verlinkte Ger
 4. **Entities**: Dynamisch aus `functions`/`status` + DPS-Codes. Plattformen: Switch, Sensor, Light, Climate, Cover, Number, Camera; zusätzliche Shadow-Sensoren aus dem IoT-Core-Thing-Shadow. Entity-Descriptions mit `device_class`, `native_unit_of_measurement`, `EntityCategory`.
 5. **Geräte/Range**: `DeviceInfo` pro Tuya-Gerät, `identifiers={(DOMAIN, device_id)}`; Child Devices wo zutreffend.
 6. **Diagnostics/Repairs**: Redaction von Tokens, Secrets, DPS-Werten mit personenbezogenen Daten; Repairs für Auth-Fehler, falsche Region, fehlende API-Autorisierung.
-7. **Tests**: `pytest-homeassistant-custom-component`, Zwischenstand 0.1.0: 36 Tests grün, 84 % Gesamt-Coverage; Stand 0.2.3: 49 Tests grün, `ruff check`/`format` sauber. Config-Flow, Coordinator, Entity-Mapping, Kamera, Redaction.
+7. **Tests**: `pytest-homeassistant-custom-component`, Zwischenstand 0.1.0: 36 Tests grün, 84 % Gesamt-Coverage; Stand 0.2.4: 81 Tests grün, `ruff check`/`format` sauber. Config-Flow, Coordinator, Entity-Mapping, Kamera, Redaction, Fehlerpfade.
 
 ## 8. Live-Beweis (2026-11-27) – Important rule erfüllt
 
@@ -118,7 +118,7 @@ Der Befehl war wieder **idempotent** (exakt der gelesene Wert wurde zurückgesch
 
 | Prüfung | Ergebnis |
 |---|---|
-| Unit-Tests (WSL, Python 3.13, `pytest-homeassistant-custom-component`) | **49 passed** (Stand 0.2.3) |
+| Unit-Tests (WSL, Python 3.13, `pytest-homeassistant-custom-component`) | **81 passed** (Stand 0.2.4) |
 | `ruff check` / `ruff format --check` | **All checks passed** / sauber |
 | Live-Smoke-Test des eigenen Clients | **Erfolg** (siehe oben) |
 | Live-Probe Shadow/Stream des eigenen Clients | **Erfolg** (8 Geräte, 23 DPS, HLS-Allokation; siehe Abschnitt 11) |
@@ -166,6 +166,6 @@ STREAM allocated=True m3u8_in_url=True query_keys=1
 | `camera`-Plattform | HLS über `stream_source()`, kein WebRTC |
 | Redaction | Stream-URL und `m3u8` in Diagnostics maskiert, `_unrecorded_attributes = frozenset(MATCH_ALL)` |
 
-**Grenzen:** Die Skalierung der `x_*`-Werte folgt Community-Referenzen (evcc/tuya-local), nicht dem Hersteller `(unbelegt im Detail)`. `d`/`t` aus `x_metrics` und `x_charge_history` bleiben wegen unklarer Einheit unbewertet. Es werden keine Schreibbefehle an die Wallbox gesendet. Ein Einsatz in einer laufenden HA-Instanz steht noch aus.
+**Grenzen:** Die Skalierung der `x_*`-Werte folgt Community-Referenzen (evcc/tuya-local), nicht dem Hersteller `(unbelegt im Detail)`. `d`/`t` aus `x_metrics` und `x_charge_history` bleiben wegen unklarer Einheit unbewertet. Es werden keine Schreibbefehle an die Wallbox gesendet. Die Installation von 0.2.3 in einer laufenden HA-Instanz ist verifiziert; 0.2.4 folgt nach Release mit Readback gegen die 73-Entitäten-Baseline.
 
 Nachweis im SecondBrain-Wiki: `wiki/fragen/2026-11-27-tuya-ev-charger-werte.md`, `wiki/projekte/tuya-project-cloud-ausbauplan.md`.

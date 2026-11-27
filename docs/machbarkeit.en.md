@@ -78,7 +78,7 @@ The live tests showed that the `v1.0/devices` family works for linked devices. B
 4. **Entities**: Dynamic from `functions`/`status` + DPS codes. Platforms: switch, sensor, light, climate, cover, number, camera; additional shadow sensors from the IoT Core thing shadow. Entity descriptions with `device_class`, `native_unit_of_measurement`, `EntityCategory`.
 5. **Device/range**: `DeviceInfo` per Tuya device, `identifiers={(DOMAIN, device_id)}`; child devices where applicable.
 6. **Diagnostics/repairs**: Redaction of tokens, secrets, DPS values with personal data; repairs for auth errors, wrong region, missing API authorization.
-7. **Tests**: `pytest-homeassistant-custom-component`, 0.1.0 intermediate state: 36 tests green, 84 % overall coverage; 0.2.3 state: 49 tests green, `ruff check`/`format` clean. Config flow, coordinator, entity mapping, camera, redaction.
+7. **Tests**: `pytest-homeassistant-custom-component`, 0.1.0 intermediate state: 36 tests green, 84 % overall coverage; 0.2.4 state: 81 tests green, `ruff check`/`format` clean. Config flow, coordinator, entity mapping, camera, redaction, error paths.
 
 ## 8. Live proof (2026-11-27) – important rule fulfilled
 
@@ -118,7 +118,7 @@ The command was again **idempotent** (exact read value written back). This prove
 
 | Check | Result |
 |---|---|
-| Unit tests (WSL, Python 3.13, `pytest-homeassistant-custom-component`) | **49 passed** (0.2.3) |
+| Unit tests (WSL, Python 3.13, `pytest-homeassistant-custom-component`) | **81 passed** (0.2.4) |
 | `ruff check` / `ruff format --check` | **All checks passed** / clean |
 | Live smoke test of own client | **Success** (see above) |
 | Live shadow/stream probe of own client | **Success** (8 devices, 23 DPS, HLS allocation; see section 11) |
@@ -166,6 +166,6 @@ STREAM allocated=True m3u8_in_url=True query_keys=1
 | `camera` platform | HLS via `stream_source()`, no WebRTC |
 | Redaction | Stream URL and `m3u8` masked in diagnostics, `_unrecorded_attributes = frozenset(MATCH_ALL)` |
 
-**Limits:** Scaling of `x_*` values follows community references (evcc/tuya-local), not the manufacturer `(unverified in detail)`. `d`/`t` from `x_metrics` and `x_charge_history` remain unassessed because their units are ambiguous. No write commands are sent to the wallbox. Deployment into a running HA instance is still pending.
+**Limits:** Scaling of `x_*` values follows community references (evcc/tuya-local), not the manufacturer `(unverified in detail)`. `d`/`t` from `x_metrics` and `x_charge_history` remain unassessed because their units are ambiguous. No write commands are sent to the wallbox. The 0.2.3 installation in a running HA instance is verified; 0.2.4 follows after release with a readback against the 73-entity baseline.
 
 Evidence in the SecondBrain wiki: `wiki/fragen/2026-11-27-tuya-ev-charger-werte.md`, `wiki/projekte/tuya-project-cloud-ausbauplan.md`.

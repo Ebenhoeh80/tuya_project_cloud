@@ -13,9 +13,9 @@ from homeassistant.components.light import (
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
+from .const import LIGHT_CODES
 from .entity import TuyaProjectCloudEntity
-
-LIGHT_CODES = {"switch_led", "led_switch", "light", "switch_light"}
+from .utils import coerce_float
 
 
 async def async_setup_entry(
@@ -28,9 +28,9 @@ async def async_setup_entry(
     entities: list[TuyaLight] = []
     for device in (coordinator.data or {}).values():
         codes = set(device.functions) | set(device.status)
-        if not codes & LIGHT_CODES:
+        if not any(code in codes for code in LIGHT_CODES):
             continue
-        switch_code = next(iter(codes & LIGHT_CODES))
+        switch_code = next((code for code in LIGHT_CODES if code in codes), None)
         brightness_code = next(
             (code for code in ("bright_value", "bright_value_v2") if code in codes),
             None,
@@ -40,7 +40,8 @@ async def async_setup_entry(
             TuyaLight(
                 coordinator,
                 device,
-                LightEntityDescription(key=switch_code, name=device.name),
+                # Main entity: HA prepends the device name automatically.
+                LightEntityDescription(key=switch_code),
                 switch_code,
                 brightness_code,
                 color_mode,
@@ -71,8 +72,8 @@ class TuyaLight(TuyaProjectCloudEntity, LightEntity):
         """Return brightness as 0-255."""
         if not self._brightness_code or not self._tuya_device:
             return None
-        value = self._tuya_device.status.get(self._brightness_code)
-        return round(float(value) / 100 * 255) if value is not None else None
+        value = coerce_float(self._tuya_device.status.get(self._brightness_code))
+        return round(value / 100 * 255) if value is not None else None
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn the light on, optionally setting brightness."""

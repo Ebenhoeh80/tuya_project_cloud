@@ -14,6 +14,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .api import TuyaApiError, TuyaDevice
 from .const import CONF_ENABLE_CAMERA, DEFAULT_ENABLE_CAMERA, DOMAIN
+from .utils import redact_identifier
 
 if TYPE_CHECKING:
     from .coordinator import (
@@ -103,7 +104,7 @@ class TuyaCamera(CoordinatorEntity["TuyaProjectCloudCoordinator"], Camera):
         except TuyaApiError:
             _LOGGER.debug(
                 "Cannot allocate a stream for camera %s (%s)",
-                self._device_id,
+                redact_identifier(self._device_id),
                 type(self).__name__,
             )
             return None

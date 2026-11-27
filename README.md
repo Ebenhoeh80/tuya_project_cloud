@@ -2,13 +2,13 @@
 
 [English](README.en.md)
 
-Eine Home-Assistant-Custom-Integration, die Geräte **ausschließlich über die Tuya OpenAPI** mit einem eigenen Cloud-Projekt (Access ID + Access Secret) steuert. **Kein Smart-Life-Konto, kein App-Passwort, kein QR-Code und kein User-Token.**
+Eine Home-Assistant-Custom-Integration, die Geräte **ausschließlich über die Tuya OpenAPI** mit einem eigenen Cloud-Projekt (Access ID + Access Secret) steuert. **Zur Laufzeit kein App-Login, kein App-Passwort, kein QR-Code und kein User-Token.** Das App-Konto wird einmalig in der Tuya-Konsole verknüpft, damit dessen Geräte in der OpenAPI sichtbar sind.
 
 ## Status
 
 Machbarkeit am 27.11.2026 live bewiesen: Token, Geräteliste, Status, Funktionen und ein idempotenter Steuerbefehl (`POST /v1.0/devices/{id}/commands`) funktionieren mit dem reinen Projekt-Token. Ebenfalls live umgesetzt: Der `dé EV Charger` liefert über den IoT-Core-Shadow 23 DPS-Werte, aus denen 16 Sensoren entstehen; der Türspion liefert über `stream/actions/allocate` ein kurzlebiges HLS-Livebild. Siehe [Machbarkeitsbericht](docs/machbarkeit.md), Abschnitte 10 und 11.
 
-Stand 0.2.3: 49 Tests grün, Ruff sauber, HACS/Hassfest-Validierung grün, Live-Installation in Home Assistant mit 8 Geräten, 16 Lader-Sensoren und HLS-Kamera verifiziert.
+Stand 0.2.4: 81 Tests grün, Ruff sauber, HACS/Hassfest-Validierung zuletzt für 0.2.3 grün. Die Live-Installation mit 8 Geräten, 16 Lader-Sensoren und HLS-Kamera ist für 0.2.3 verifiziert; 0.2.4 wird nach dem Release gegen diese Baseline geprüft.
 
 ## Voraussetzungen
 
@@ -38,7 +38,7 @@ Alternativ: `custom_components/tuya_project_cloud` nach `/config/custom_componen
 | Access Secret | Client Secret des Tuya-Projekts |
 | Region | `cn`, `us`, `us_east`, `eu`, `eu_west`, `in`, `sg` |
 
-Unter Optionen lassen sich das Abfrageintervall (10–900 s, Standard 30 s), das Lesen der IoT-Core-Shadow-Daten und die Kamera-Plattform einstellen. Optionen lösen einen Reload des Eintrags aus.
+Unter Optionen lassen sich das Abfrageintervall (10–900 s, Standard 30 s), das Lesen der IoT-Core-Shadow-Daten und die Kamera-Plattform einstellen. Laderwerte werden dabei einmal pro Minute aktualisiert; bei leerer Antwort wird sofort erneut versucht. Optionen lösen einen Reload des Eintrags aus.
 
 ## Unterstützte Entitäten
 
@@ -46,13 +46,13 @@ Die Integration erzeugt Entitäten dynamisch aus den DPS-Funktionen und Statusco
 
 | Plattform | Erkennung |
 |---|---|
-| Switch | Boolean-Functions mit `switch`, `onoff`, `power`, `enable`, … |
+| Switch | Functions mit `switch`, `onoff`, `power`, `enable`, …; Boolean und bestehende Enum-/Integer-/String-Codes bleiben erhalten, Light-Codes sind ausgeschlossen |
 | Sensor | Lesbare Statuscodes wie `battery`, `temperature`, `humidity`, … |
 | Number | Integer-Functions mit `min`/`max`/`step` |
 | Light | `switch_led`/`led_switch`, optional `bright_value` |
 | Climate | Kategorie `kt`/`ykq`/`hvac` oder `temp_set` |
 | Cover | Kategorie `cl`/`curtain`/`jc` oder `control`/`position` |
-| Sensor (Shadow) | Geräte mit IoT-Core-`x_*`-Properties: Arbeitszustand, Spannungen, Ströme, Leistung, Energie, Ladestrom, Firmware |
+| Sensor (Shadow) | Geräte mit IoT-Core-`x_*`-Properties: Arbeitszustand, Spannungen, Ströme, Leistung, Energie, Ladestrom, Firmware; neue Sensoren erscheinen, sobald Daten eintreffen |
 | Camera | Kategorie `sp` oder Functions mit `stream`: HLS-Livebild |
 
 Unbekannte Codes werden nicht geraten und nicht gesteuert. Für den Lader werden nur live beobachtete und plausibel skalierte Werte abgebildet; nicht eindeutige Zeiten und Zähler-Rohwerte bleiben außen vor. Es werden keine Schreibbefehle an die Wallbox gesendet.
@@ -63,7 +63,7 @@ Unbekannte Codes werden nicht geraten und nicht gesteuert. Für den Lader werden
 - Die `iot-03`-Endpunktfamilie wird bewusst nicht verwendet; sie ist für das getestete Projekt nicht autorisiert (`28841105`).
 - Geräte müssen über „Link App Account" im Projekt sichtbar sein.
 - Tuya-Rate-Limits gelten pro Projekt (z. B. Commands ~4/s).
-- Diagnostics redaktieren Tokens, Secrets, `local_key`, UID, Standortdaten, Stream-URLs und `m3u8`.
+- Diagnostics redaktieren Tokens, Secrets, `local_key`, UID, Standortdaten, Stream-URLs und `m3u8`; Geräte-IDs werden pseudonymisiert.
 - Livevideo läuft als `camera`-Plattform mit HLS; die signierte URL wird pro Streamstart neu allokiert, nur im Speicher gehalten und nie in State, Attributen, Logs, Recorder oder Diagnostics geschrieben. WebRTC wird nicht angeboten (`device not supports`).
 - Die Skalierung der `x_*`-Werte stammt aus Community-Referenzen, nicht vom Hersteller; `(unbelegt)`.
 

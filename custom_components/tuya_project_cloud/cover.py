@@ -13,10 +13,11 @@ from homeassistant.components.cover import (
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
+from .const import CONTROL_CODES
 from .entity import TuyaProjectCloudEntity
+from .utils import coerce_int
 
 COVER_CATEGORIES = {"cl", "curtain", "jc"}
-CONTROL_CODES = {"control", "control_2", "switch"}
 
 
 async def async_setup_entry(
@@ -40,9 +41,9 @@ async def async_setup_entry(
             TuyaCover(
                 coordinator,
                 device,
+                # Main entity: HA prepends the device name automatically.
                 CoverEntityDescription(
                     key=control or "position",
-                    name=device.name,
                     device_class=CoverDeviceClass.CURTAIN,
                 ),
                 control,
@@ -82,8 +83,8 @@ class TuyaCover(TuyaProjectCloudEntity, CoverEntity):
         device = self._tuya_device
         if not device or not self._position_code:
             return None
-        value = device.status.get(self._position_code)
-        return int(value) == 0 if value is not None else None
+        value = coerce_int(device.status.get(self._position_code))
+        return value == 0 if value is not None else None
 
     @property
     def current_cover_position(self) -> int | None:
@@ -91,8 +92,7 @@ class TuyaCover(TuyaProjectCloudEntity, CoverEntity):
         device = self._tuya_device
         if not device or not self._position_code:
             return None
-        value = device.status.get(self._position_code)
-        return int(value) if value is not None else None
+        return coerce_int(device.status.get(self._position_code))
 
     async def async_open_cover(self, **kwargs: Any) -> None:
         """Open the cover."""

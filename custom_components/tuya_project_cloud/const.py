@@ -17,6 +17,14 @@ DEFAULT_SCAN_INTERVAL = timedelta(seconds=30)
 DEFAULT_ENABLE_CAMERA = True
 DEFAULT_ENABLE_SHADOW = True
 
+# Thing shadow data changes while charging; refresh it slower than DPS status.
+SHADOW_REFRESH_INTERVAL = 60
+
+# Ordered tuples keep unique IDs stable across restarts when a device exposes
+# more than one compatible DPS code.
+LIGHT_CODES: tuple[str, ...] = ("switch_led", "led_switch", "light", "switch_light")
+CONTROL_CODES: tuple[str, ...] = ("control", "control_2", "switch")
+
 REGIONS = {
     "cn": "https://openapi.tuyacn.com",
     "us": "https://openapi.tuyaus.com",

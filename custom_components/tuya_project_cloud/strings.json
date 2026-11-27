@@ -2,8 +2,8 @@
   "config": {
     "step": {
       "user": {
-        "title": "Tuya Cloud-Projekt verbinden",
-        "description": "Nur Access ID, Access Secret und Region werden benötigt. Kein Smart-Life-Konto und kein App-Passwort.",
+        "title": "Connect Tuya Cloud project",
+        "description": "Only enter Access ID, Access Secret and region. No app login is needed at runtime; linking the app account is a one-time step in the Tuya console.",
         "data": {
           "access_id": "Access ID (Client ID)",
           "access_secret": "Access Secret (Client Secret)",
@@ -11,8 +11,8 @@
         }
       },
       "reauth_confirm": {
-        "title": "Tuya-Zugang erneuern",
-        "description": "Das Tuya-Projekt konnte nicht authentifiziert werden. Bitte die Zugangsdaten erneut eingeben.",
+        "title": "Renew Tuya access",
+        "description": "Authentication with the Tuya project failed. Please re-enter the Access ID, Access Secret and region.",
         "data": {
           "access_id": "Access ID (Client ID)",
           "access_secret": "Access Secret (Client Secret)",
@@ -21,66 +21,82 @@
       }
     },
     "error": {
-      "invalid_auth": "Access ID, Access Secret oder Signatur ungültig.",
-      "cannot_connect": "Tuya Cloud nicht erreichbar.",
-      "unknown": "Unerwarteter Fehler bei der Anmeldung."
+      "invalid_auth": "Access ID, Access Secret or signature is invalid. Also check the host's system time.",
+      "cannot_connect": "Cannot reach Tuya Cloud. Check the internet connection and the selected region.",
+      "unknown": "Unexpected error while connecting to the Tuya project."
     },
     "abort": {
-      "already_configured": "Dieses Tuya-Projekt ist bereits konfiguriert.",
-      "reauth_successful": "Authentifizierung erfolgreich erneuert."
+      "already_configured": "This Tuya project is already configured.",
+      "reauth_successful": "Authentication renewed successfully."
     }
   },
   "options": {
     "step": {
       "init": {
-        "title": "Tuya Project Cloud Optionen",
+        "title": "Tuya Project Cloud options",
+        "description": "Saving reloads the integration. Disabled platforms leave their entities unavailable; existing entity IDs are not deleted.",
         "data": {
-          "scan_interval": "Abfrageintervall in Sekunden",
-          "enable_shadow": "Laderdaten aus dem IoT-Core-Shadow lesen",
-          "enable_camera": "Livekameras bereitstellen"
+          "scan_interval": "Polling interval in seconds (10–900, default 30)",
+          "enable_shadow": "Read IoT Core thing shadow data (charger values, refreshed every minute)",
+          "enable_camera": "Expose HLS live camera streams"
         }
       }
     }
   },
   "entity": {
-    "camera": {
-      "live": { "name": "Livebild" }
-    },
     "sensor": {
-      "work_state": { "name": "Arbeitszustand" },
-      "work_state_debug": { "name": "Ladezustand" },
-      "voltage_l1": { "name": "Spannung L1" },
-      "voltage_l2": { "name": "Spannung L2" },
-      "voltage_l3": { "name": "Spannung L3" },
-      "current_l1": { "name": "Strom L1" },
-      "current_l2": { "name": "Strom L2" },
-      "current_l3": { "name": "Strom L3" },
-      "power": { "name": "Ladeleistung" },
-      "energy_session": { "name": "Energie dieser Ladung" },
-      "charge_current": { "name": "Ladestrom" },
-      "max_current_cfg": { "name": "Maximalstrom" },
-      "energy_total": { "name": "Energie gesamt" },
+      "work_state": { "name": "Work state" },
+      "work_state_debug": { "name": "Work state (debug)" },
+      "voltage_l1": { "name": "Voltage L1" },
+      "voltage_l2": { "name": "Voltage L2" },
+      "voltage_l3": { "name": "Voltage L3" },
+      "current_l1": { "name": "Current L1" },
+      "current_l2": { "name": "Current L2" },
+      "current_l3": { "name": "Current L3" },
+      "power": { "name": "Charging power" },
+      "energy_session": { "name": "Energy this session" },
+      "charge_current": { "name": "Charge current" },
+      "max_current_cfg": { "name": "Maximum current" },
+      "energy_total": { "name": "Total energy" },
       "firmware": { "name": "Firmware" },
-      "rcd_type": { "name": "Fehlerstromschutz" },
+      "rcd_type": { "name": "RCD type" },
       "heartbeat": { "name": "Heartbeat" }
+    }
+  },
+  "selector": {
+    "region": {
+      "options": {
+        "cn": "China",
+        "us": "United States (West)",
+        "us_east": "United States (East)",
+        "eu": "Europe (Central)",
+        "eu_west": "Europe (West)",
+        "in": "India",
+        "sg": "Singapore"
+      }
+    }
+  },
+  "exceptions": {
+    "command_not_authorized": {
+      "message": "Tuya rejected the control command (error 1106). Check the cloud project permissions and whether the device is authorized."
     }
   },
   "issues": {
     "api_not_authorized": {
-      "title": "Tuya-API nicht autorisiert",
-      "description": "Das Projekt darf die Geräte-API nicht aufrufen. In der Tuya-Konsole unter 'Service API → Add Authorization' die Device-API freischalten."
+      "title": "Tuya API not authorized",
+      "description": "The project is not allowed to call the Device API (/v1.0/devices). Enable it in the Tuya console under 'Service API → Add Authorization'."
     },
     "iot_core_not_authorized": {
-      "title": "IoT-Core nicht autorisiert",
-      "description": "Die Thing-Shadow-API ist für das Projekt nicht freigegeben. In der Tuya-Konsole IoT Core aktivieren und das Cloud-Projekt autorisieren."
+      "title": "IoT Core not authorized",
+      "description": "The thing shadow API is not enabled for this project. Enable IoT Core in the Tuya console and authorize the cloud project; charger sensors remain unavailable until access is granted."
     },
     "command_not_authorized": {
-      "title": "Gerätebefehl nicht erlaubt",
-      "description": "Die Steuerung eines Geräts wurde von Tuya abgelehnt (1106). Prüfe die Berechtigungen des Cloud-Projekts."
+      "title": "Device command not allowed",
+      "description": "Tuya rejected a control command (error 1106). Check the cloud project permissions and whether the device is authorized."
     },
     "region_mismatch": {
-      "title": "Falsche Region",
-      "description": "Es wurden keine Geräte gefunden. Prüfe die Region des Tuya-Projekts und ob ein App-Konto verknüpft ist."
+      "title": "No devices found",
+      "description": "No devices were found. Check the selected region and whether an app account is linked to the cloud project in the Tuya console."
     }
   }
 }

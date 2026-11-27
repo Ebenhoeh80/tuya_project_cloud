@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Connect Tuya Cloud project",
-        "description": "Only Access ID, Access Secret and region are required. No Smart Life account and no app password.",
+        "description": "Only enter Access ID, Access Secret and region. No app login is needed at runtime; linking the app account is a one-time step in the Tuya console.",
         "data": {
           "access_id": "Access ID (Client ID)",
           "access_secret": "Access Secret (Client Secret)",
@@ -12,7 +12,7 @@
       },
       "reauth_confirm": {
         "title": "Renew Tuya access",
-        "description": "The Tuya project could not be authenticated. Please enter the credentials again.",
+        "description": "Authentication with the Tuya project failed. Please re-enter the Access ID, Access Secret and region.",
         "data": {
           "access_id": "Access ID (Client ID)",
           "access_secret": "Access Secret (Client Secret)",
@@ -21,9 +21,9 @@
       }
     },
     "error": {
-      "invalid_auth": "Access ID, Access Secret or signature is invalid.",
-      "cannot_connect": "Tuya Cloud is unreachable.",
-      "unknown": "Unexpected error during sign-in."
+      "invalid_auth": "Access ID, Access Secret or signature is invalid. Also check the host's system time.",
+      "cannot_connect": "Cannot reach Tuya Cloud. Check the internet connection and the selected region.",
+      "unknown": "Unexpected error while connecting to the Tuya project."
     },
     "abort": {
       "already_configured": "This Tuya project is already configured.",
@@ -34,21 +34,19 @@
     "step": {
       "init": {
         "title": "Tuya Project Cloud options",
+        "description": "Saving reloads the integration. Disabled platforms leave their entities unavailable; existing entity IDs are not deleted.",
         "data": {
-          "scan_interval": "Polling interval in seconds",
-          "enable_shadow": "Read charger data from the IoT Core thing shadow",
-          "enable_camera": "Provide live camera streams"
+          "scan_interval": "Polling interval in seconds (10–900, default 30)",
+          "enable_shadow": "Read IoT Core thing shadow data (charger values, refreshed every minute)",
+          "enable_camera": "Expose HLS live camera streams"
         }
       }
     }
   },
   "entity": {
-    "camera": {
-      "live": { "name": "Live stream" }
-    },
     "sensor": {
       "work_state": { "name": "Work state" },
-      "work_state_debug": { "name": "Charge state" },
+      "work_state_debug": { "name": "Work state (debug)" },
       "voltage_l1": { "name": "Voltage L1" },
       "voltage_l2": { "name": "Voltage L2" },
       "voltage_l3": { "name": "Voltage L3" },
@@ -65,22 +63,40 @@
       "heartbeat": { "name": "Heartbeat" }
     }
   },
+  "selector": {
+    "region": {
+      "options": {
+        "cn": "China",
+        "us": "United States (West)",
+        "us_east": "United States (East)",
+        "eu": "Europe (Central)",
+        "eu_west": "Europe (West)",
+        "in": "India",
+        "sg": "Singapore"
+      }
+    }
+  },
+  "exceptions": {
+    "command_not_authorized": {
+      "message": "Tuya rejected the control command (error 1106). Check the cloud project permissions and whether the device is authorized."
+    }
+  },
   "issues": {
     "api_not_authorized": {
       "title": "Tuya API not authorized",
-      "description": "The project is not allowed to call the device API. Enable it in the Tuya console under 'Service API → Add Authorization'."
+      "description": "The project is not allowed to call the Device API (/v1.0/devices). Enable it in the Tuya console under 'Service API → Add Authorization'."
     },
     "iot_core_not_authorized": {
       "title": "IoT Core not authorized",
-      "description": "The thing shadow API is not enabled for this project. Enable IoT Core in the Tuya console and authorize the cloud project."
+      "description": "The thing shadow API is not enabled for this project. Enable IoT Core in the Tuya console and authorize the cloud project; charger sensors remain unavailable until access is granted."
     },
     "command_not_authorized": {
       "title": "Device command not allowed",
-      "description": "Tuya rejected a device command (1106). Check the permissions of the cloud project."
+      "description": "Tuya rejected a control command (error 1106). Check the cloud project permissions and whether the device is authorized."
     },
     "region_mismatch": {
-      "title": "Wrong region",
-      "description": "No devices were found. Check the region of the Tuya project and whether an app account is linked."
+      "title": "No devices found",
+      "description": "No devices were found. Check the selected region and whether an app account is linked to the cloud project in the Tuya console."
     }
   }
 }

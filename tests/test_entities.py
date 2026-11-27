@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from homeassistant.components.climate import HVACMode
 from homeassistant.const import EntityCategory
+from homeassistant.helpers.typing import UNDEFINED
 
 from custom_components.tuya_project_cloud.api import (
     TuyaDevice,
@@ -71,6 +72,13 @@ def _entry(device: TuyaDevice) -> MagicMock:
     entry = MagicMock()
     entry.runtime_data = coordinator
     entry.options = {}
+    entry.listeners = []
+
+    def _listen(callback: object) -> MagicMock:
+        entry.listeners.append(callback)
+        return MagicMock()
+
+    coordinator.async_add_listener.side_effect = _listen
     return entry
 
 
@@ -226,3 +234,155 @@ async def test_shadow_sensors() -> None:
     assert sensors["charge_current"].native_value == 16.0
     assert sensors["heartbeat"].native_value is False
     assert all(entity.unique_id.startswith("dev2_shadow_") for entity in added)
+
+
+@pytest.mark.asyncio
+async def test_number_invalid_value_and_setter() -> None:
+    """Invalid number payloads do not raise and setter keeps integer DPS."""
+    device = _device()
+    device.status["volume"] = "abc"
+    added = []
+    await number_setup(MagicMock(), _entry(device), lambda e: added.extend(e))
+    entity = added[0]
+    assert entity.native_value is None
+    entity.coordinator.async_send_command = AsyncMock()
+    await entity.async_set_native_value(7.4)
+    entity.coordinator.async_send_command.assert_called_once_with("dev1", "volume", 7)
+
+
+@pytest.mark.asyncio
+async def test_climate_invalid_values_and_setters() -> None:
+    """Invalid climate payloads are ignored and commands stay integer-valued."""
+    device = _device()
+    device.status["temp_current"] = "abc"
+    device.status["temp_set"] = "abc"
+    added = []
+    await climate_setup(MagicMock(), _entry(device), lambda e: added.extend(e))
+    entity = added[0]
+    assert entity.native_current_temperature is None
+    assert entity.native_target_temperature is None
+    entity.coordinator.async_send_command = AsyncMock()
+    await entity.async_set_temperature(temperature=21.8)
+    entity.coordinator.async_send_command.assert_called_once_with(
+        "dev1", "temp_set", 21
+    )
+
+
+@pytest.mark.asyncio
+async def test_cover_and_light_invalid_values() -> None:
+    """Malformed DPS values leave cover and light state unknown, not broken."""
+    device = _device()
+    device.status["percent_control"] = "abc"
+    device.status["bright_value"] = "abc"
+    cover_added = []
+    light_added = []
+    await cover_setup(MagicMock(), _entry(device), lambda e: cover_added.extend(e))
+    await light_setup(MagicMock(), _entry(device), lambda e: light_added.extend(e))
+    assert cover_added[0].current_cover_position is None
+    assert cover_added[0].is_closed is None
+    assert light_added[0].brightness is None
+
+
+@pytest.mark.asyncio
+async def test_main_entities_do_not_duplicate_device_name() -> None:
+    """Light, climate and cover rely on Home Assistant's device-name prefix."""
+    device = _device()
+    for setup in (light_setup, climate_setup, cover_setup):
+        added = []
+        await setup(MagicMock(), _entry(device), lambda e, a=added: a.extend(e))
+        assert added[0].entity_description.name in (None, UNDEFINED)
+
+
+@pytest.mark.asyncio
+async def test_shadow_sensors_appear_when_shadow_arrives() -> None:
+    """A charger that came online after startup gets its sensors dynamically."""
+    device = TuyaDevice(
+        id="dev2",
+        name="Charger",
+        category="dj",
+        product_id="p2",
+        online=True,
+    )
+    entry = _entry(device)
+    added: list = []
+    await sensor_setup(MagicMock(), entry, lambda e: added.extend(e))
+    assert added == []
+    device.shadow = {"x_work_state": TuyaShadowProperty("x_work_state", "300", 101, 1)}
+    entry.listeners[0]()
+    assert len(added) == 1
+    assert added[0].unique_id == "dev2_shadow_work_state"
+    entry.listeners[0]()
+    assert len(added) == 1
+
+
+@pytest.mark.asyncio
+async def test_light_code_selection_is_stable() -> None:
+    """Several matching DPS codes always resolve to the same priority code."""
+    device = _device()
+    device.status["light"] = True
+    for _ in range(3):
+        added: list = []
+        await light_setup(MagicMock(), _entry(device), lambda e, a=added: a.extend(e))
+        assert added[0].entity_description.key == "switch_led"
+
+
+@pytest.mark.asyncio
+async def test_switch_keeps_legacy_codes_and_excludes_light_codes() -> None:
+    """Existing non-Boolean switches stay; only light duplicates are skipped."""
+    device = _device()
+    device.functions["switch_led"] = TuyaFunction("switch_led", "Boolean")
+    device.functions["pir_switch"] = TuyaFunction("pir_switch", "Enum")
+    added: list = []
+    await switch_setup(MagicMock(), _entry(device), lambda e: added.extend(e))
+    keys = {entity.entity_description.key for entity in added}
+    assert "switch" in keys
+    assert "pir_switch" in keys
+    assert "switch_led" not in keys
+
+
+@pytest.mark.asyncio
+async def test_stale_device_is_unavailable() -> None:
+    """A failed status read marks DPS entities unavailable."""
+    device = _device()
+    device.last_update_success = False
+    added: list = []
+    await switch_setup(MagicMock(), _entry(device), lambda e: added.extend(e))
+    assert added[0].available is False
+
+
+def test_shadow_value_edge_cases() -> None:
+    """Malformed shadow payloads return None instead of crashing."""
+    from custom_components.tuya_project_cloud.shadow import (
+        ShadowSensorDescription,
+        shadow_value,
+    )
+
+    description = ShadowSensorDescription(
+        key="voltage_l1",
+        translation_key="voltage_l1",
+        code="x_metrics",
+        json_path=("L1", 0),
+        device_class="voltage",
+    )
+    assert (
+        shadow_value(
+            {"x_metrics": TuyaShadowProperty("x_metrics", "{broken", 1, 1)},
+            description,
+        )
+        is None
+    )
+    assert (
+        shadow_value(
+            {"x_metrics": TuyaShadowProperty("x_metrics", '{"L1":[]}', 1, 1)},
+            description,
+        )
+        is None
+    )
+    assert (
+        shadow_value(
+            {"x_metrics": TuyaShadowProperty("x_metrics", '{"L1":["hot"]}', 1, 1)},
+            description,
+        )
+        is None
+    )
+    assert shadow_value({}, description) is None

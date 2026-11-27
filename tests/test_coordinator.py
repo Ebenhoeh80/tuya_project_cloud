@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from homeassistant.exceptions import ConfigEntryAuthFailed
+from homeassistant.exceptions import ConfigEntryAuthFailed, ServiceValidationError
 from homeassistant.helpers.update_coordinator import UpdateFailed
 
 from custom_components.tuya_project_cloud.api import (
@@ -18,6 +18,7 @@ from custom_components.tuya_project_cloud.api import (
 from custom_components.tuya_project_cloud.coordinator import (
     TuyaProjectCloudCoordinator,
 )
+from custom_components.tuya_project_cloud.utils import redact_identifier
 
 
 def _make_coordinator(hass, entry) -> TuyaProjectCloudCoordinator:
@@ -98,8 +99,10 @@ async def test_send_command_refreshes(hass, mock_config_entry) -> None:
 
 
 @pytest.mark.asyncio
-async def test_shadow_is_loaded_once(hass, mock_config_entry) -> None:
-    """Thing shadow data is fetched once and kept on the device."""
+async def test_shadow_is_throttled_within_refresh_interval(
+    hass, mock_config_entry
+) -> None:
+    """Repeated polls inside the refresh interval reuse the shadow."""
     coordinator = _make_coordinator(hass, mock_config_entry)
     coordinator.client.async_get_devices = AsyncMock(
         return_value=[
@@ -139,3 +142,196 @@ async def test_iot_core_authorization_issue(hass, mock_config_entry) -> None:
     )
     await coordinator._async_update_data()
     assert coordinator.iot_core_not_authorized is True
+
+
+@pytest.mark.asyncio
+async def test_shadow_is_retried_while_empty(hass, mock_config_entry) -> None:
+    """An offline/empty shadow is retried on the next poll."""
+    coordinator = _make_coordinator(hass, mock_config_entry)
+    coordinator.client.async_get_devices = AsyncMock(
+        return_value=[
+            {
+                "id": "dev1",
+                "name": "Charger",
+                "category": "dj",
+                "product_id": "p1",
+                "online": True,
+            }
+        ]
+    )
+    shadow = {"x_work_state": TuyaShadowProperty(code="x_work_state", value="300")}
+    coordinator.client.async_get_thing_shadow = AsyncMock(side_effect=[{}, shadow])
+    first = await coordinator._async_update_data()
+    assert first["dev1"].shadow == {}
+    # Simulate the refresh interval having elapsed.
+    coordinator._last_shadow_refresh["dev1"] = 0.0
+    second = await coordinator._async_update_data()
+    assert second["dev1"].shadow == shadow
+    assert coordinator.client.async_get_thing_shadow.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_shadow_updates_after_interval(hass, mock_config_entry) -> None:
+    """Charger shadow values are refreshed instead of freezing at startup."""
+    coordinator = _make_coordinator(hass, mock_config_entry)
+    coordinator.client.async_get_devices = AsyncMock(
+        return_value=[
+            {
+                "id": "dev1",
+                "name": "Charger",
+                "category": "dj",
+                "product_id": "p1",
+                "online": True,
+            }
+        ]
+    )
+    first_shadow = {
+        "x_work_state": TuyaShadowProperty(code="x_work_state", value="300")
+    }
+    second_shadow = {
+        "x_work_state": TuyaShadowProperty(code="x_work_state", value="301")
+    }
+    coordinator.client.async_get_thing_shadow = AsyncMock(
+        side_effect=[first_shadow, second_shadow]
+    )
+    first = await coordinator._async_update_data()
+    assert first["dev1"].shadow["x_work_state"].value == "300"
+    coordinator._last_shadow_refresh["dev1"] = 0.0
+    second = await coordinator._async_update_data()
+    assert second["dev1"].shadow["x_work_state"].value == "301"
+
+
+@pytest.mark.asyncio
+async def test_failed_device_read_marks_data_stale(hass, mock_config_entry) -> None:
+    """Repeated read failures mark the device data as stale."""
+    coordinator = _make_coordinator(hass, mock_config_entry)
+    coordinator.client.async_get_devices = AsyncMock(
+        return_value=[
+            {
+                "id": "dev1",
+                "name": "Plug",
+                "category": "cz",
+                "product_id": "p1",
+                "online": True,
+            }
+        ]
+    )
+    coordinator.client.async_get_status = AsyncMock(
+        side_effect=[{"switch": True}, TuyaApiError("offline")]
+    )
+    first = await coordinator._async_update_data()
+    assert first["dev1"].last_update_success is True
+    second = await coordinator._async_update_data()
+    assert second["dev1"].last_update_success is False
+    assert second["dev1"].status == {"switch": True}
+
+
+@pytest.mark.asyncio
+async def test_issues_are_written_only_on_state_change(hass, mock_config_entry) -> None:
+    """Repeated identical polls do not rewrite the issue registry."""
+    coordinator = _make_coordinator(hass, mock_config_entry)
+    with patch(
+        "custom_components.tuya_project_cloud.coordinator.async_update_issues"
+    ) as update_issues:
+        await coordinator._async_update_data()
+        await coordinator._async_update_data()
+        update_issues.assert_called_once()
+        coordinator.client.async_get_devices = AsyncMock(
+            return_value=[
+                {
+                    "id": "dev2",
+                    "name": "Plug",
+                    "category": "cz",
+                    "product_id": "p2",
+                    "online": True,
+                }
+            ]
+        )
+        await coordinator._async_update_data()
+        assert update_issues.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_denied_command_creates_repair_and_localized_error(
+    hass, mock_config_entry
+) -> None:
+    """Error 1106 becomes a repair and a translatable service error."""
+    coordinator = _make_coordinator(hass, mock_config_entry)
+    coordinator.async_request_refresh = AsyncMock()
+    coordinator.client.async_send_command = AsyncMock(
+        side_effect=TuyaAuthorizationError("denied", code=1106)
+    )
+    with (
+        patch(
+            "custom_components.tuya_project_cloud.coordinator.async_update_command_issue"
+        ) as update_issue,
+        pytest.raises(ServiceValidationError) as err,
+    ):
+        await coordinator.async_send_command("dev1", "switch", True)
+    assert err.value.translation_key == "command_not_authorized"
+    assert err.value.translation_domain == "tuya_project_cloud"
+    update_issue.assert_called_once_with(
+        hass, mock_config_entry.entry_id, not_authorized=True
+    )
+    coordinator.async_request_refresh.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_successful_command_clears_repair(hass, mock_config_entry) -> None:
+    """A successful command clears an earlier authorization repair."""
+    coordinator = _make_coordinator(hass, mock_config_entry)
+    coordinator.async_request_refresh = AsyncMock()
+    coordinator.client.async_send_command = AsyncMock()
+    with patch(
+        "custom_components.tuya_project_cloud.coordinator.async_update_command_issue"
+    ) as update_issue:
+        await coordinator.async_send_command("dev1", "switch", True)
+    update_issue.assert_called_once_with(
+        hass, mock_config_entry.entry_id, not_authorized=False
+    )
+    coordinator.async_request_refresh.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_partial_device_error_keeps_device(hass, mock_config_entry) -> None:
+    """A failed device read keeps the device but does not break the update."""
+    coordinator = _make_coordinator(hass, mock_config_entry)
+    coordinator.client.async_get_devices = AsyncMock(
+        return_value=[
+            {
+                "id": "dev1",
+                "name": "Plug",
+                "category": "cz",
+                "product_id": "p1",
+                "online": True,
+            }
+        ]
+    )
+    coordinator.client.async_get_status = AsyncMock(side_effect=TuyaApiError("bad"))
+    data = await coordinator._async_update_data()
+    assert data["dev1"].name == "Plug"
+    assert data["dev1"].status == {}
+
+
+@pytest.mark.asyncio
+async def test_log_messages_do_not_contain_raw_device_id(
+    hass, mock_config_entry, caplog
+) -> None:
+    """Debug logs use a pseudonym instead of the Tuya device ID."""
+    coordinator = _make_coordinator(hass, mock_config_entry)
+    coordinator.client.async_get_devices = AsyncMock(
+        return_value=[
+            {
+                "id": "dev-secret-123",
+                "name": "Plug",
+                "category": "cz",
+                "product_id": "p1",
+                "online": True,
+            }
+        ]
+    )
+    coordinator.client.async_get_status = AsyncMock(side_effect=TuyaApiError("bad"))
+    with caplog.at_level("DEBUG"):
+        await coordinator._async_update_data()
+    assert "dev-secret-123" not in caplog.text
+    assert redact_identifier("dev-secret-123") in caplog.text

@@ -8,7 +8,9 @@ import pytest
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.exceptions import ConfigEntryAuthFailed
 
+from custom_components.tuya_project_cloud import async_remove_entry
 from custom_components.tuya_project_cloud.api import (
+    TuyaAuthorizationError,
     TuyaConnectionError,
 )
 
@@ -77,6 +79,40 @@ async def test_setup_not_ready(hass, mock_config_entry) -> None:
     coordinator = MagicMock()
     coordinator.async_config_entry_first_refresh = AsyncMock(
         side_effect=TuyaConnectionError("offline")
+    )
+    with (
+        patch(
+            "custom_components.tuya_project_cloud.TuyaOpenApi", return_value=MagicMock()
+        ),
+        patch(
+            "custom_components.tuya_project_cloud.TuyaProjectCloudCoordinator",
+            return_value=coordinator,
+        ),
+    ):
+        await hass.config_entries.async_setup(mock_config_entry.entry_id)
+    assert mock_config_entry.state is ConfigEntryState.SETUP_RETRY
+
+
+@pytest.mark.asyncio
+async def test_remove_entry_deletes_issues(hass, mock_config_entry) -> None:
+    """Deleting a config entry also removes its repairs."""
+    with patch(
+        "custom_components.tuya_project_cloud.ir.async_delete_issue"
+    ) as delete_issue:
+        await async_remove_entry(hass, mock_config_entry)
+    assert delete_issue.call_count == 4
+    assert all(
+        call.args[1] == "tuya_project_cloud" for call in delete_issue.call_args_list
+    )
+
+
+@pytest.mark.asyncio
+async def test_setup_authorization_error_retries(hass, mock_config_entry) -> None:
+    """An authorization error during setup must not become an unhandled error."""
+    mock_config_entry.add_to_hass(hass)
+    coordinator = MagicMock()
+    coordinator.async_config_entry_first_refresh = AsyncMock(
+        side_effect=TuyaAuthorizationError("denied")
     )
     with (
         patch(

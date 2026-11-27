@@ -12,6 +12,7 @@ from homeassistant.config_entries import (
     OptionsFlowWithReload,
 )
 from homeassistant.core import callback
+from homeassistant.helpers import selector
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import (
@@ -35,11 +36,45 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
+# Selector labels come from translations, so the stored value stays a plain
+# region code while the user sees a readable name in every language.
+REGION_SELECTOR = selector.SelectSelector(
+    selector.SelectSelectorConfig(options=list(REGIONS), translation_key="region")
+)
+
+REGION_TITLES: dict[str, dict[str, str]] = {
+    "de": {
+        "cn": "China",
+        "us": "USA (West)",
+        "us_east": "USA (Ost)",
+        "eu": "Europa (Zentral)",
+        "eu_west": "Europa (West)",
+        "in": "Indien",
+        "sg": "Singapur",
+    },
+    "en": {
+        "cn": "China",
+        "us": "United States (West)",
+        "us_east": "United States (East)",
+        "eu": "Europe (Central)",
+        "eu_west": "Europe (West)",
+        "in": "India",
+        "sg": "Singapore",
+    },
+}
+
+
+def _region_title(language: str, region: str) -> str:
+    """Build a human-readable config entry title for a region code."""
+    labels = REGION_TITLES.get(language.split("-", 1)[0].lower(), REGION_TITLES["en"])
+    return f"Tuya Cloud ({labels.get(region, region)})"
+
+
 STEP_USER_SCHEMA = vol.Schema(
     {
         vol.Required(CONF_ACCESS_ID): str,
         vol.Required(CONF_ACCESS_SECRET): str,
-        vol.Required(CONF_REGION, default="eu"): vol.In(REGIONS),
+        vol.Required(CONF_REGION, default="eu"): REGION_SELECTOR,
     }
 )
 
@@ -73,7 +108,9 @@ class TuyaProjectCloudConfigFlow(ConfigFlow, domain=DOMAIN):
                 await self.async_set_unique_id(user_input[CONF_ACCESS_ID])
                 self._abort_if_unique_id_configured()
                 return self.async_create_entry(
-                    title=f"Tuya Cloud ({user_input[CONF_REGION]})",
+                    title=_region_title(
+                        self.hass.config.language, user_input[CONF_REGION]
+                    ),
                     data=user_input,
                 )
 
@@ -84,8 +121,12 @@ class TuyaProjectCloudConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_reauth(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Handle reauthentication after invalid credentials."""
-        return await self.async_step_reauth_confirm(user_input)
+        """Handle reauthentication after invalid credentials.
+
+        Home Assistant may pass the old entry data here. Never validate stale
+        credentials; always show the form and let the user enter new values.
+        """
+        return await self.async_step_reauth_confirm()
 
     async def async_step_reauth_confirm(
         self, user_input: dict[str, Any] | None = None
@@ -109,7 +150,20 @@ class TuyaProjectCloudConfigFlow(ConfigFlow, domain=DOMAIN):
             except TuyaApiError:
                 errors["base"] = "unknown"
             else:
-                return self.async_update_reload_and_abort(entry, data=user_input)
+                new_id = user_input[CONF_ACCESS_ID]
+                if new_id != entry.data.get(CONF_ACCESS_ID) and any(
+                    other.unique_id == new_id and other.entry_id != entry.entry_id
+                    for other in self._async_current_entries()
+                ):
+                    return self.async_abort(reason="already_configured")
+                return self.async_update_reload_and_abort(
+                    entry,
+                    data=user_input,
+                    unique_id=new_id,
+                    title=_region_title(
+                        self.hass.config.language, user_input[CONF_REGION]
+                    ),
+                )
 
         defaults = {
             CONF_ACCESS_ID: entry.data.get(CONF_ACCESS_ID, ""),
@@ -119,9 +173,9 @@ class TuyaProjectCloudConfigFlow(ConfigFlow, domain=DOMAIN):
             {
                 vol.Required(CONF_ACCESS_ID, default=defaults[CONF_ACCESS_ID]): str,
                 vol.Required(CONF_ACCESS_SECRET): str,
-                vol.Required(CONF_REGION, default=defaults[CONF_REGION]): vol.In(
-                    REGIONS
-                ),
+                vol.Required(
+                    CONF_REGION, default=defaults[CONF_REGION]
+                ): REGION_SELECTOR,
             }
         )
         return self.async_show_form(

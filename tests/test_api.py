@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import hmac
+import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -25,6 +27,16 @@ def _session() -> MagicMock:
 def _client(session: MagicMock) -> TuyaOpenApi:
     """Return a client with deterministic credentials."""
     return TuyaOpenApi(session, "client", "secret", "eu")
+
+
+def _response(status: int = 200, data: dict | None = None) -> MagicMock:
+    """Return a mocked aiohttp response context manager."""
+    response = MagicMock()
+    response.status = status
+    response.json = AsyncMock(return_value=data or {"success": True})
+    response.__aenter__ = AsyncMock(return_value=response)
+    response.__aexit__ = AsyncMock(return_value=None)
+    return response
 
 
 def test_sign_matches_canonical_form() -> None:
@@ -269,3 +281,66 @@ async def test_stream_allocation_without_url() -> None:
         pytest.raises(TuyaApiError),
     ):
         await client.async_allocate_stream("dev1")
+
+
+@pytest.mark.asyncio
+async def test_rate_limit_is_connection_error() -> None:
+    """HTTP 429 is treated as transient instead of a successful response."""
+    client = _client(_session())
+    client._session = MagicMock()
+    client._session.request = MagicMock(return_value=_response(429))
+    with pytest.raises(TuyaConnectionError):
+        await client.async_get_devices()
+
+
+@pytest.mark.asyncio
+async def test_device_pagination() -> None:
+    """Projects with more than 100 devices are read page by page."""
+    client = _client(_session())
+    request = AsyncMock(
+        side_effect=[
+            {
+                "result": {
+                    "devices": [{"id": "dev1"}],
+                    "has_more": True,
+                    "last_row_key": "page2",
+                }
+            },
+            {"result": {"devices": [{"id": "dev2"}], "has_more": False}},
+        ]
+    )
+    with patch.object(client, "_request", request):
+        devices = await client.async_get_devices()
+    assert [device["id"] for device in devices] == ["dev1", "dev2"]
+    assert "last_row_key=page2" in request.await_args_list[1].args[1]
+
+
+@pytest.mark.asyncio
+async def test_short_token_lifetime_is_clamped() -> None:
+    """A tiny expire_time does not cause a token fetch on every request."""
+    client = _client(_session())
+    with patch.object(
+        client,
+        "_request",
+        AsyncMock(return_value={"result": {"access_token": "abc", "expire_time": 5}}),
+    ):
+        await client.async_get_token()
+    assert client._expires_at - time.time() >= 89
+    assert client._valid_token()
+
+
+@pytest.mark.asyncio
+async def test_concurrent_requests_share_one_token_refresh() -> None:
+    """Parallel calls do not trigger a token stampede."""
+    client = _client(_session())
+    response = _response(200)
+
+    async def _fake_token() -> None:
+        client._access_token = "abc"
+        client._expires_at = time.time() + 7200
+
+    client.async_get_token = AsyncMock(side_effect=_fake_token)
+    client._session = MagicMock()
+    client._session.request = MagicMock(return_value=response)
+    await asyncio.gather(*(client._request("GET", "/v1.0/test") for _ in range(3)))
+    client.async_get_token.assert_awaited_once()

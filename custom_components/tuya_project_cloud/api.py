@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import hmac
 import json
 import logging
 import time
+import uuid
 from dataclasses import dataclass, field
 from typing import Any
+from urllib.parse import quote
 
 from aiohttp import ClientError, ClientSession, ClientTimeout
 
@@ -94,6 +97,7 @@ class TuyaDevice:
     category: str
     product_id: str
     online: bool
+    last_update_success: bool = True
     uid: str = ""
     owner_id: str = ""
     status: dict[str, Any] = field(default_factory=dict)
@@ -121,6 +125,7 @@ class TuyaOpenApi:
         self._base_url = REGIONS[region].rstrip("/")
         self._access_token: str | None = None
         self._expires_at = 0.0
+        self._token_lock = asyncio.Lock()
 
     def _sign(
         self,
@@ -160,7 +165,10 @@ class TuyaOpenApi:
     ) -> dict[str, Any]:
         """Perform a signed request and return the decoded response."""
         if authenticated and not self._valid_token():
-            await self.async_get_token()
+            # Concurrent platform/service calls must not fetch multiple tokens.
+            async with self._token_lock:
+                if not self._valid_token():
+                    await self.async_get_token()
 
         payload = "" if body is None else _json_dumps(body)
         timestamp = str(int(time.time() * 1000))
@@ -196,6 +204,16 @@ class TuyaOpenApi:
         if not isinstance(data, dict):
             raise TuyaApiError("Unexpected response from Tuya OpenAPI")
 
+        status = response.status if isinstance(response.status, int) else 200
+        if status in (401, 403):
+            self._access_token = None
+            self._expires_at = 0.0
+            raise TuyaAuthenticationError("Tuya request was rejected")
+        if status == 429 or status >= 500:
+            raise TuyaConnectionError(f"Tuya Cloud returned HTTP {status}")
+        if status >= 400:
+            raise TuyaApiError(f"Tuya Cloud returned HTTP {status}")
+
         if data.get("success") is False:
             code = data.get("code")
             message = str(data.get("msg", "Tuya API error"))
@@ -205,7 +223,7 @@ class TuyaOpenApi:
                 raise TuyaAuthorizationError(message, code=code)
             if ERR_SIGN_INVALID in message.lower() or code in (1004, 1005):
                 raise TuyaAuthenticationError(message)
-            if response.status in (401, 403):
+            if status in (401, 403):
                 raise TuyaAuthenticationError(message)
             raise TuyaApiError(message)
 
@@ -224,15 +242,35 @@ class TuyaOpenApi:
         token = result.get("access_token")
         if not token:
             raise TuyaAuthenticationError("Tuya token response missing access_token")
-        self._access_token = token
-        self._expires_at = time.time() + int(result.get("expire_time", 7200))
+        self._access_token = str(token)
+        try:
+            expire = int(result.get("expire_time", 7200))
+        except (TypeError, ValueError):
+            expire = 7200
+        # Keep a usable window even when Tuya reports a very short lifetime.
+        self._expires_at = time.time() + max(expire, 90)
 
     async def async_get_devices(self) -> list[dict[str, Any]]:
-        """Return devices linked to the project's app accounts."""
-        data = await self._request("GET", f"{ENDPOINT_ASSOCIATED_DEVICES}?size=100")
-        result = data.get("result", {})
-        devices = result.get("devices", [])
-        return [device for device in devices if isinstance(device, dict)]
+        """Return all devices linked to the project's app accounts."""
+        devices: list[dict[str, Any]] = []
+        last_row_key: str | None = None
+        for _ in range(20):
+            path = f"{ENDPOINT_ASSOCIATED_DEVICES}?size=100"
+            if last_row_key:
+                path += f"&last_row_key={quote(last_row_key, safe='')}"
+            data = await self._request("GET", path)
+            result = data.get("result", {})
+            if not isinstance(result, dict):
+                break
+            devices.extend(
+                item for item in result.get("devices", []) if isinstance(item, dict)
+            )
+            has_more = str(result.get("has_more", False)).lower() == "true"
+            next_key = result.get("last_row_key")
+            if not has_more or not next_key or str(next_key) == last_row_key:
+                break
+            last_row_key = str(next_key)
+        return devices
 
     async def async_get_status(self, device_id: str) -> dict[str, Any]:
         """Return the current DPS status as code -> value."""
@@ -322,14 +360,10 @@ class TuyaOpenApi:
 
 
 def _nonce() -> str:
-    """Return a random nonce without importing uuid at module scope."""
-    import uuid
-
+    """Return a random nonce for the signed request."""
     return uuid.uuid4().hex
 
 
 def _json_dumps(value: dict[str, Any]) -> str:
     """Serialize JSON compactly without external dependencies."""
-    import json
-
     return json.dumps(value, separators=(",", ":"), ensure_ascii=False)

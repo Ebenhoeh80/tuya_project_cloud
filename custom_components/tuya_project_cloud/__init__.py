@@ -8,17 +8,22 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
+from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import (
+    TuyaApiError,
     TuyaAuthenticationError,
-    TuyaConnectionError,
     TuyaOpenApi,
 )
 from .const import (
     CONF_ACCESS_ID,
     CONF_ACCESS_SECRET,
     CONF_REGION,
+    ISSUE_API_NOT_AUTHORIZED,
+    ISSUE_COMMAND_NOT_AUTHORIZED,
+    ISSUE_IOT_CORE_NOT_AUTHORIZED,
+    ISSUE_REGION_MISMATCH,
     PLATFORMS,
 )
 from .const import (
@@ -44,7 +49,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         raise
     except TuyaAuthenticationError as err:
         raise ConfigEntryAuthFailed(str(err)) from err
-    except (TuyaConnectionError, OSError) as err:
+    except (TuyaApiError, OSError) as err:
+        # Authorization and transient API errors must not become an
+        # unhandled exception during setup; retrying is always safer.
         raise ConfigEntryNotReady(str(err)) from err
 
     entry.runtime_data = coordinator
@@ -59,3 +66,14 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     return await hass.config_entries.async_unload_platforms(
         entry, [Platform(platform) for platform in PLATFORMS]
     )
+
+
+async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Remove repairs that belong to a deleted config entry."""
+    for issue in (
+        ISSUE_API_NOT_AUTHORIZED,
+        ISSUE_COMMAND_NOT_AUTHORIZED,
+        ISSUE_IOT_CORE_NOT_AUTHORIZED,
+        ISSUE_REGION_MISMATCH,
+    ):
+        ir.async_delete_issue(hass, DOMAIN, f"{entry.entry_id}_{issue}")

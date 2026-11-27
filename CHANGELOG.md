@@ -1,5 +1,31 @@
 # Changelog / Änderungen
 
+## [0.2.4] - 2026-11-27
+
+### Deutsch
+
+- Qualitäts-Audit der Integration ohne Funktionsverlust: alle bestehenden Plattformen, Entitäten, Services, Automationen, Dashboards und Konfigurationen bleiben erhalten.
+- API-Härtung: HTTP-Status werden geprüft (401/403/429/5xx), Token-Refresh ist gegen parallele Requests abgesichert, kurze Token-Laufzeiten werden begrenzt und die Geräteliste unterstützt Pagination.
+- Coordinator: Shadow-Werte werden alle 60 Sekunden aktualisiert und bei leerer oder fehlgeschlagener Antwort sofort erneut versucht; neue Lader-Sensoren erscheinen dynamisch, sobald Daten eintreffen. Fehlgeschlagene Statuslesevorgänge markieren betroffene Geräte als unverfügbar.
+- Setup-Fehler werden korrekt als `ConfigEntryNotReady`/`ConfigEntryAuthFailed` gemeldet; Repairs werden gedrosselt und beim Entfernen des Eintrags gelöscht. Ein abgelehnter Befehl (1106) erzeugt einen Repair und eine lokalisierte `ServiceValidationError`.
+- Datenschutz: Redaction und Pseudonymisierung für Tokens, Secrets, Access-ID/Secret-Werte, Geräte-IDs, UIDs, Stream-URLs und `m3u8`; Diagnostics enthalten weiterhin keine vertraulichen Werte.
+- Stabilität der Entity-IDs: Light- und Cover-DPS-Codes werden in fester Reihenfolge gewählt. Der Switch-Filter behält bewusst alle live beobachteten Boolean-, Enum-, Integer- und String-Codes bei und schließt nur doppelte Light-Codes aus.
+- UX/DE/EN: lokalisierte Regionsauswahl, Reauth ohne erneute Validierung alter Daten, korrekte Options-Texte zu deaktivierten Entitäten und präzisere Sensorbezeichnungen. Die Doku beschreibt jetzt eindeutig, dass nur zur Laufzeit kein App-Login nötig ist.
+- Tests/CI: 81 Tests grün, `pytest.ini` mit `strict-markers`/`strict-config`, `validate.yml` mit Concurrency und Timeouts, Ruff und Formatierung sauber.
+
+### English
+
+- Quality audit without feature loss: all existing platforms, entities, services, automations, dashboards and configurations are preserved.
+- API hardening: HTTP statuses are checked (401/403/429/5xx), token refresh is protected against parallel requests, short token lifetimes are clamped and device listing supports pagination.
+- Coordinator: shadow values refresh every 60 seconds and are retried immediately on empty or failed responses; new charger sensors appear dynamically once data arrives. Failed status reads mark the affected devices as unavailable.
+- Setup errors are correctly reported as `ConfigEntryNotReady`/`ConfigEntryAuthFailed`; repairs are throttled and deleted when the entry is removed. A rejected command (1106) creates a repair and a localized `ServiceValidationError`.
+- Privacy: redaction and pseudonymization for tokens, secrets, Access ID/Secret values, device IDs, UIDs, stream URLs and `m3u8`; diagnostics still contain no confidential values.
+- Stable entity IDs: light and cover DPS codes are selected in a fixed order. The switch filter deliberately retains all observed Boolean, Enum, Integer and String codes and only excludes duplicate light codes.
+- UX/DE/EN: localized region selector, reauth without revalidating old data, corrected option text for disabled entities and more precise sensor names. The docs now state clearly that no app login is needed at runtime only.
+- Tests/CI: 81 tests passing, `pytest.ini` with `strict-markers`/`strict-config`, `validate.yml` with concurrency and timeouts, Ruff and formatting clean.
+
+---
+
 ## [0.2.3] - 2026-11-27
 
 ### Deutsch

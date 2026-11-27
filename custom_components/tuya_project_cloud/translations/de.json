@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Tuya Cloud-Projekt verbinden",
-        "description": "Nur Access ID, Access Secret und Region werden benötigt. Kein Smart-Life-Konto und kein App-Passwort.",
+        "description": "Nur Access ID, Access Secret und Region eingeben. Zur Laufzeit ist kein App-Login nötig; das einmalige Verknüpfen des App-Kontos erfolgt in der Tuya-Konsole.",
         "data": {
           "access_id": "Access ID (Client ID)",
           "access_secret": "Access Secret (Client Secret)",
@@ -12,7 +12,7 @@
       },
       "reauth_confirm": {
         "title": "Tuya-Zugang erneuern",
-        "description": "Das Tuya-Projekt konnte nicht authentifiziert werden. Bitte die Zugangsdaten erneut eingeben.",
+        "description": "Die Anmeldung am Tuya-Projekt ist fehlgeschlagen. Bitte Access ID, Access Secret und Region erneut eingeben.",
         "data": {
           "access_id": "Access ID (Client ID)",
           "access_secret": "Access Secret (Client Secret)",
@@ -21,9 +21,9 @@
       }
     },
     "error": {
-      "invalid_auth": "Access ID, Access Secret oder Signatur ungültig.",
-      "cannot_connect": "Tuya Cloud nicht erreichbar.",
-      "unknown": "Unerwarteter Fehler bei der Anmeldung."
+      "invalid_auth": "Access ID, Access Secret oder Signatur ungültig. Prüfe auch die Systemzeit des Hosts.",
+      "cannot_connect": "Tuya Cloud nicht erreichbar. Prüfe Internetverbindung und gewählte Region.",
+      "unknown": "Unerwarteter Fehler beim Verbinden mit dem Tuya-Projekt."
     },
     "abort": {
       "already_configured": "Dieses Tuya-Projekt ist bereits konfiguriert.",
@@ -33,22 +33,20 @@
   "options": {
     "step": {
       "init": {
-        "title": "Tuya Project Cloud Optionen",
+        "title": "Optionen für Tuya Project Cloud",
+        "description": "Nach dem Speichern wird die Integration neu geladen. Deaktivierte Entitäten bleiben unverfügbar; vorhandene Entity-IDs werden nicht gelöscht.",
         "data": {
-          "scan_interval": "Abfrageintervall in Sekunden",
-          "enable_shadow": "Laderdaten aus dem IoT-Core-Shadow lesen",
-          "enable_camera": "Livekameras bereitstellen"
+          "scan_interval": "Abfrageintervall in Sekunden (10–900, Standard 30)",
+          "enable_shadow": "IoT-Core-Shadow-Daten lesen (Laderwerte, Aktualisierung jede Minute)",
+          "enable_camera": "HLS-Livekameras bereitstellen"
         }
       }
     }
   },
   "entity": {
-    "camera": {
-      "live": { "name": "Livebild" }
-    },
     "sensor": {
       "work_state": { "name": "Arbeitszustand" },
-      "work_state_debug": { "name": "Ladezustand" },
+      "work_state_debug": { "name": "Arbeitszustand (Debug)" },
       "voltage_l1": { "name": "Spannung L1" },
       "voltage_l2": { "name": "Spannung L2" },
       "voltage_l3": { "name": "Spannung L3" },
@@ -65,22 +63,40 @@
       "heartbeat": { "name": "Heartbeat" }
     }
   },
+  "selector": {
+    "region": {
+      "options": {
+        "cn": "China",
+        "us": "USA (West)",
+        "us_east": "USA (Ost)",
+        "eu": "Europa (Zentral)",
+        "eu_west": "Europa (West)",
+        "in": "Indien",
+        "sg": "Singapur"
+      }
+    }
+  },
+  "exceptions": {
+    "command_not_authorized": {
+      "message": "Tuya hat den Steuerbefehl abgelehnt (Fehler 1106). Prüfe die Berechtigungen des Cloud-Projekts und ob das Gerät freigegeben ist."
+    }
+  },
   "issues": {
     "api_not_authorized": {
       "title": "Tuya-API nicht autorisiert",
-      "description": "Das Projekt darf die Geräte-API nicht aufrufen. In der Tuya-Konsole unter 'Service API → Add Authorization' die Device-API freischalten."
+      "description": "Das Projekt darf die Geräte-API (/v1.0/devices) nicht aufrufen. Aktiviere sie in der Tuya-Konsole unter „Service API → Add Authorization“ (Berechtigung hinzufügen)."
     },
     "iot_core_not_authorized": {
       "title": "IoT-Core nicht autorisiert",
-      "description": "Die Thing-Shadow-API ist für das Projekt nicht freigegeben. In der Tuya-Konsole IoT Core aktivieren und das Cloud-Projekt autorisieren."
+      "description": "Die Thing-Shadow-API ist für das Projekt nicht freigegeben. Aktiviere IoT Core in der Tuya-Konsole und autorisiere das Cloud-Projekt; bis dahin fehlen die Lader-Sensoren."
     },
     "command_not_authorized": {
       "title": "Gerätebefehl nicht erlaubt",
-      "description": "Die Steuerung eines Geräts wurde von Tuya abgelehnt (1106). Prüfe die Berechtigungen des Cloud-Projekts."
+      "description": "Tuya hat einen Steuerbefehl abgelehnt (Fehler 1106). Prüfe die Berechtigungen des Cloud-Projekts und ob das Gerät freigegeben ist."
     },
     "region_mismatch": {
-      "title": "Falsche Region",
-      "description": "Es wurden keine Geräte gefunden. Prüfe die Region des Tuya-Projekts und ob ein App-Konto verknüpft ist."
+      "title": "Keine Geräte gefunden",
+      "description": "Es wurden keine Geräte gefunden. Prüfe die gewählte Region und ob in der Tuya-Konsole ein App-Konto mit dem Projekt verknüpft ist."
     }
   }
 }

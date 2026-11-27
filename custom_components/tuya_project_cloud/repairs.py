@@ -8,6 +8,7 @@ from homeassistant.helpers import issue_registry as ir
 from .const import (
     DOMAIN,
     ISSUE_API_NOT_AUTHORIZED,
+    ISSUE_COMMAND_NOT_AUTHORIZED,
     ISSUE_IOT_CORE_NOT_AUTHORIZED,
     ISSUE_REGION_MISMATCH,
 )
@@ -69,3 +70,21 @@ def async_update_issues(
         )
     else:
         ir.async_delete_issue(hass, DOMAIN, region_issue)
+
+
+def async_update_command_issue(
+    hass: HomeAssistant, entry_id: str, *, not_authorized: bool
+) -> None:
+    """Create or clear the repair for a rejected device command."""
+    issue_id = f"{entry_id}_{ISSUE_COMMAND_NOT_AUTHORIZED}"
+    if not_authorized:
+        ir.async_create_issue(
+            hass,
+            DOMAIN,
+            issue_id,
+            is_fixable=False,
+            severity=ir.IssueSeverity.WARNING,
+            translation_key=ISSUE_COMMAND_NOT_AUTHORIZED,
+        )
+    else:
+        ir.async_delete_issue(hass, DOMAIN, issue_id)

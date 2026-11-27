@@ -52,7 +52,9 @@ class TuyaProjectCloudEntity(CoordinatorEntity[TuyaProjectCloudCoordinator]):
     def available(self) -> bool:
         """Return availability based on device online state."""
         device = self._tuya_device
-        return super().available and bool(device and device.online)
+        return super().available and bool(
+            device and device.online and device.last_update_success
+        )
 
     @property
     def dps_value(self) -> Any:
@@ -103,7 +105,9 @@ class TuyaShadowEntity(CoordinatorEntity[TuyaProjectCloudCoordinator]):
     def available(self) -> bool:
         """Return availability based on device online state."""
         device = self._tuya_device
-        return super().available and bool(device and device.online)
+        return super().available and bool(
+            device and device.online and device.last_update_success
+        )
 
     @property
     def shadow_sensor_value(self) -> Any:

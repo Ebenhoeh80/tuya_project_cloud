@@ -15,6 +15,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .entity import TuyaProjectCloudEntity
+from .utils import coerce_float
 
 CLIMATE_CATEGORIES = {"kt", "ykq", "hvac"}
 MODE_VALUES = {
@@ -43,7 +44,8 @@ async def async_setup_entry(
             TuyaClimate(
                 coordinator,
                 device,
-                ClimateEntityDescription(key="temp_set", name=device.name),
+                # Main entity: HA prepends the device name automatically.
+                ClimateEntityDescription(key="temp_set"),
                 codes,
             )
         )
@@ -73,14 +75,13 @@ class TuyaClimate(TuyaProjectCloudEntity, ClimateEntity):
             return None
         for code in ("temp_current", "temperature", "temp_show"):
             if code in device.status:
-                return float(device.status[code])
+                return coerce_float(device.status[code])
         return None
 
     @property
     def native_target_temperature(self) -> float | None:
-        """Return the target temperature."""
-        value = self.dps_value
-        return float(value) if value is not None else None
+        """Return the target temperature, tolerating unexpected payloads."""
+        return coerce_float(self.dps_value)
 
     @property
     def hvac_mode(self) -> HVACMode:

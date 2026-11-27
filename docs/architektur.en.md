@@ -4,7 +4,7 @@
 
 ## 1. Goal and scope
 
-Home Assistant custom integration that uses **exclusively the Tuya OpenAPI** with Access ID + Access Secret. No Smart Life app login, no user code, no QR scan, no password.
+Home Assistant custom integration that uses **exclusively the Tuya OpenAPI** with Access ID + Access Secret. No app login at runtime, no user code, no QR scan, no password. The app account is linked once in the Tuya console only.
 
 **Proven scope (live 2026-11-27):** Devices visible via `GET /v1.0/iot-01/associated-users/devices` with the project token. Reading and controlling via `GET/POST /v1.0/devices/...` are verified with the project token. Added: IoT Core thing shadow (`GET /v2.0/cloud/thing/{id}/shadow/properties`, 23 DPS values) and stream allocation (`POST /v1.0/devices/{id}/stream/actions/allocate`, HLS).
 
@@ -40,7 +40,7 @@ Config flow (access_id, access_secret, region)
         ├─ GET /v1.0/devices/{id}/status              → DPS values
         ├─ GET /v1.0/devices/{id}/specifications      → types/constraints
         ├─ POST /v1.0/devices/{id}/commands           → control
-        ├─ GET /v2.0/cloud/thing/{id}/shadow/properties → charger data (once per device)
+        ├─ GET /v2.0/cloud/thing/{id}/shadow/properties → charger data (every 60 s, immediate retry on empty response)
         └─ POST /v1.0/devices/{id}/stream/actions/allocate → short-lived HLS URL
         │
         ▼
@@ -61,7 +61,7 @@ Config flow (access_id, access_secret, region)
 | `api.py` | `TuyaOpenApi`: signature, token, device list, status, functions, specifications, commands, thing shadow, stream allocation. Own error classes. |
 | `shadow.py` | `ShadowSensorDescription`, mapping of 16 charger sensors, JSON flattening and scaling |
 | `config_flow.py` | `user` step (ID, secret, region), duplicate check, `reauth`, options (interval, shadow, camera) with reload |
-| `coordinator.py` | `DataUpdateCoordinator[dict[str, TuyaDevice]]`, device mapping, shadow cache, errors→repairs/reauth |
+| `coordinator.py` | `DataUpdateCoordinator[dict[str, TuyaDevice]]`, device mapping, 60 s shadow refresh, stale devices→unavailable, errors→repairs/reauth |
 | `entity.py` | `TuyaProjectCloudEntity` (DPS) and `TuyaShadowEntity` (shadow): `device_info`, `unique_id`, `available` |
 | `switch.py`, `sensor.py`, `light.py`, `climate.py`, `cover.py`, `number.py`, `camera.py` | Dynamic entities from DPS and shadow codes or HLS stream |
 | `diagnostics.py` | Redaction of token/secret/`local_key`/stream URL/`m3u8`; shadow codes only, no values |
@@ -107,13 +107,13 @@ class TuyaDevice:
 
 | Platform | Detection via DPS code / category |
 |---|---|
-| switch | Boolean functions with `switch`/`onoff`/`power`/`enable` in the code |
+| switch | Functions with `switch`/`onoff`/`power`/`enable` in the code; Boolean and existing Enum/Integer/String codes are retained for compatibility, light codes are excluded |
 | sensor | Status codes without function (read-only), e.g. `battery`, `temperature`, `humidity`, `motion_record` |
 | light | `switch_led`, `bright_value`, `colour_data`, `temp_value` |
 | climate | `temp_set`, `mode`, `fan_speed`, `windspeed`, category `kt` |
 | cover | `control`, `percent_control`, `position`, category `cl`/`curtain` |
 | number | Integer functions with `min`/`max`/`step` not already used by light/climate/cover |
-| sensor (shadow) | Devices with `x_work_state`, `x_metrics`, `x_charger_info` etc.; 16 mapped sensors with a `shadow_` prefix in the unique ID |
+| sensor (shadow) | Devices with `x_work_state`, `x_metrics`, `x_charger_info` etc.; 16 mapped sensors with a `shadow_` prefix in the unique ID, added dynamically when data arrives |
 | camera | Category `sp` or functions containing `stream`; HLS via `stream_source()` |
 
 Scaling `(unverified in detail)`: voltage/current/power/energy from `x_metrics` ×0.1, `x_charger_info.e` ×0.1; durations and raw counters with ambiguous units are omitted. Readable status codes with matching hints (`battery`, `temperature`, `humidity`, …) are created as `sensor` with `EntityCategory.DIAGNOSTIC`. Completely unknown codes are neither guessed nor controlled.
@@ -125,22 +125,22 @@ Scaling `(unverified in detail)`: voltage/current/power/energy from `x_metrics` 
 | `sign invalid`, `1004`, `1005`, 401 | `ConfigEntryAuthFailed` from setup **or coordinator** → reauth flow |
 | `28841105` (API not authorized) | Repair issue "api_not_authorized", entities still from status, no commands |
 | `28841105` on thing shadow | Repair issue "iot_core_not_authorized", remaining sensors stay available |
-| `1106 illegal permission` | Repair issue "command_not_authorized", command disabled |
+| `1106 illegal permission` | Repair issue "command_not_authorized" plus a `ServiceValidationError` with a localized message; other commands remain available |
 | Timeout / 5xx / 429 | `ConfigEntryNotReady` at setup, `UpdateFailed` in coordinator, backoff |
 | Wrong region → empty list | Repair issue "region_mismatch" |
 | Stream allocation failed | `stream_source()` returns `None`; setup and other entities stay healthy |
 
 ## 8. Tests
 
-- `tests/test_api.py`: signature vectors, token refresh, error classes, shadow mapping, stream allocation.
+- `tests/test_api.py`: signature vectors, token refresh/lock, HTTP status/429, pagination, error classes, shadow mapping, stream allocation.
 - `tests/test_config_flow.py`: user/reauth/duplicate, options including shadow/camera.
-- `tests/test_coordinator.py`: device mapping, auth→reauth, shadow cache, IoT Core authorization.
-- `tests/test_init.py`: setup/unload, `runtime_data`, forwarding of the `camera` platform.
-- `tests/test_entities.py`: DPS and shadow→entity mapping.
+- `tests/test_coordinator.py`: device mapping, auth→reauth, shadow refresh and retry, stale devices, repair throttling, command 1106, IoT Core authorization.
+- `tests/test_init.py`: setup/error paths/unload, `runtime_data`, repair cleanup, forwarding of the `camera` platform.
+- `tests/test_entities.py`: DPS and shadow→entity mapping, dynamic shadow sensors, stable light/cover codes, switch code compatibility.
 - `tests/test_camera.py`: fresh HLS URL, offline case, option, stream error.
 - `tests/test_diagnostics.py`: redaction including stream URL/`m3u8`, shadow codes only in output.
 
-Current state: 49 tests green, `ruff check` and `ruff format --check` clean (WSL, Python 3.13). `pytest.ini` sets `asyncio_mode = auto`. Camera tests additionally need `PyTurboJPEG` because HA imports `homeassistant.components.camera`.
+Current state: 81 tests green, `ruff check` and `ruff format --check` clean (WSL, Python 3.13). `pytest.ini` sets `asyncio_mode = auto`, `strict-markers` and `strict-config`; `validate.yml` uses concurrency and timeouts. Camera tests additionally need `PyTurboJPEG` because HA imports `homeassistant.components.camera`.
 
 ## 9. Iteration plan
 
@@ -152,4 +152,4 @@ Current state: 49 tests green, `ruff check` and `ruff format --check` clean (WSL
 6. **Iteration F:** Shadow client, `shadow.py`, `camera.py`, options, redaction, de/en docs per expansion plan. ✅ complete
 7. **Iteration G:** Live probe of the new client methods (8 devices, 23 shadow properties, HLS allocation) without secret output. ✅ complete
 
-After each iteration: document assumptions, verify tests, adjust architecture. Deployment into a running HA instance follows only after approval.
+After each iteration: document assumptions, verify tests, adjust architecture. Deployment into the running HA instance is verified for 0.2.3; 0.2.4 will be checked against the 73-entity baseline after release.

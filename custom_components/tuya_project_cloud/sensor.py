@@ -6,7 +6,7 @@ from typing import Any
 
 from homeassistant.components.sensor import SensorEntity, SensorEntityDescription
 from homeassistant.const import EntityCategory
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .entity import TuyaProjectCloudEntity, TuyaShadowEntity
@@ -52,12 +52,33 @@ async def async_setup_entry(
                     code,
                 )
             )
-    for device in (coordinator.data or {}).values():
-        if not has_shadow_sensors(device):
-            continue
-        for description in CHARGER_SHADOW_SENSORS:
-            if description.code in device.shadow:
-                entities.append(TuyaShadowSensor(coordinator, device, description))
+    known_shadow_ids: set[str] = set()
+
+    def _new_shadow_sensors() -> list[TuyaShadowSensor]:
+        """Collect shadow sensors that do not exist yet."""
+        new: list[TuyaShadowSensor] = []
+        for device in (coordinator.data or {}).values():
+            if not has_shadow_sensors(device):
+                continue
+            for description in CHARGER_SHADOW_SENSORS:
+                if description.code not in device.shadow:
+                    continue
+                unique_id = f"{device.id}_shadow_{description.key}"
+                if unique_id in known_shadow_ids:
+                    continue
+                known_shadow_ids.add(unique_id)
+                new.append(TuyaShadowSensor(coordinator, device, description))
+        return new
+
+    entities.extend(_new_shadow_sensors())
+
+    @callback
+    def _async_add_new_shadow_sensors() -> None:
+        """Add sensors when a charger comes online after HA started."""
+        if new := _new_shadow_sensors():
+            async_add_entities(new)
+
+    entry.async_on_unload(coordinator.async_add_listener(_async_add_new_shadow_sensors))
     async_add_entities(entities)
 
 
