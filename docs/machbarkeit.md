@@ -78,7 +78,7 @@ Die Live-Tests haben gezeigt, dass die `v1.0/devices`-Familie für verlinkte Ger
 4. **Entities**: Dynamisch aus `functions`/`status` + DPS-Codes. Plattformen: Switch, Sensor, Light, Climate, Cover, Number, Camera; zusätzliche Shadow-Sensoren aus dem IoT-Core-Thing-Shadow. Entity-Descriptions mit `device_class`, `native_unit_of_measurement`, `EntityCategory`.
 5. **Geräte/Range**: `DeviceInfo` pro Tuya-Gerät, `identifiers={(DOMAIN, device_id)}`; Child Devices wo zutreffend.
 6. **Diagnostics/Repairs**: Redaction von Tokens, Secrets, DPS-Werten mit personenbezogenen Daten; Repairs für Auth-Fehler, falsche Region, fehlende API-Autorisierung.
-7. **Tests**: `pytest-homeassistant-custom-component`, Zwischenstand 0.1.0: 36 Tests grün, 84 % Gesamt-Coverage; Stand 0.2.2: 49 Tests grün, `ruff check`/`format` sauber. Config-Flow, Coordinator, Entity-Mapping, Kamera, Redaction.
+7. **Tests**: `pytest-homeassistant-custom-component`, Zwischenstand 0.1.0: 36 Tests grün, 84 % Gesamt-Coverage; Stand 0.2.3: 49 Tests grün, `ruff check`/`format` sauber. Config-Flow, Coordinator, Entity-Mapping, Kamera, Redaction.
 
 ## 8. Live-Beweis (2026-11-27) – Important rule erfüllt
 
@@ -118,7 +118,7 @@ Der Befehl war wieder **idempotent** (exakt der gelesene Wert wurde zurückgesch
 
 | Prüfung | Ergebnis |
 |---|---|
-| Unit-Tests (WSL, Python 3.13, `pytest-homeassistant-custom-component`) | **49 passed** (Stand 0.2.2) |
+| Unit-Tests (WSL, Python 3.13, `pytest-homeassistant-custom-component`) | **49 passed** (Stand 0.2.3) |
 | `ruff check` / `ruff format --check` | **All checks passed** / sauber |
 | Live-Smoke-Test des eigenen Clients | **Erfolg** (siehe oben) |
 | Live-Probe Shadow/Stream des eigenen Clients | **Erfolg** (8 Geräte, 23 DPS, HLS-Allokation; siehe Abschnitt 11) |

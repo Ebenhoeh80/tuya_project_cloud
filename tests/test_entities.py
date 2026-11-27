@@ -183,8 +183,8 @@ async def test_climate_modes() -> None:
     await climate_setup(MagicMock(), _entry(_device()), lambda e: added.extend(e))
     entity = added[0]
     assert entity.hvac_mode is HVACMode.COOL
-    assert entity.current_temperature == 20.0
-    assert entity.target_temperature == 22.0
+    assert entity.native_current_temperature == 20.0
+    assert entity.native_target_temperature == 22.0
 
 
 @pytest.mark.asyncio

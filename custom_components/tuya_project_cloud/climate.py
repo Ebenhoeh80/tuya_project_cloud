@@ -53,7 +53,7 @@ async def async_setup_entry(
 class TuyaClimate(TuyaProjectCloudEntity, ClimateEntity):
     """A climate entity backed by Tuya DPS codes."""
 
-    _attr_temperature_unit = UnitOfTemperature.CELSIUS
+    _attr_native_temperature_unit = UnitOfTemperature.CELSIUS
 
     def __init__(self, coordinator, device, description, codes):
         """Initialize the climate entity."""
@@ -63,12 +63,10 @@ class TuyaClimate(TuyaProjectCloudEntity, ClimateEntity):
         features = ClimateEntityFeature(0)
         if "temp_set" in device.functions:
             features |= ClimateEntityFeature.TARGET_TEMPERATURE
-        if "mode" in device.functions:
-            features |= ClimateEntityFeature.TARGET_TEMPERATURE
         self._attr_supported_features = features
 
     @property
-    def current_temperature(self) -> float | None:
+    def native_current_temperature(self) -> float | None:
         """Return the current temperature."""
         device = self._tuya_device
         if not device:
@@ -79,7 +77,7 @@ class TuyaClimate(TuyaProjectCloudEntity, ClimateEntity):
         return None
 
     @property
-    def target_temperature(self) -> float | None:
+    def native_target_temperature(self) -> float | None:
         """Return the target temperature."""
         value = self.dps_value
         return float(value) if value is not None else None

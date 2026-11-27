@@ -1,5 +1,21 @@
 # Changelog / Änderungen
 
+## [0.2.3] - 2026-11-27
+
+### Deutsch
+
+- Die Climate-Entity nutzt jetzt `native_current_temperature`, `native_target_temperature` und `_attr_native_temperature_unit`. Damit verschwinden die Deprecation-Warnungen, die ab Home Assistant 2027.11 zum Fehler würden.
+- Ein doppelt gesetztes `TARGET_TEMPERATURE`-Feature bei Geräten mit `mode`-DPS wurde entfernt.
+- Version und Dokumentation auf 0.2.3 nachgezogen; 49 Tests grün, Ruff sauber.
+
+### English
+
+- The climate entity now uses `native_current_temperature`, `native_target_temperature` and `_attr_native_temperature_unit`, removing deprecation warnings that would become errors in Home Assistant 2027.11.
+- Removed a duplicate `TARGET_TEMPERATURE` feature assignment for devices with a `mode` DPS.
+- Version and documentation updated to 0.2.3; 49 tests passing, Ruff clean.
+
+---
+
 ## [0.2.2] - 2026-11-27
 
 ### Deutsch
