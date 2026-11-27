@@ -148,6 +148,37 @@ async def test_functions_mapping() -> None:
 
 
 @pytest.mark.asyncio
+async def test_functions_normalize_string_values() -> None:
+    """Tuya may return values as a JSON string instead of an object."""
+    client = _client(_session())
+    with patch.object(
+        client,
+        "_request",
+        AsyncMock(
+            return_value={
+                "result": {
+                    "functions": [
+                        {
+                            "code": "countdown_1",
+                            "type": "Integer",
+                            "values": '{"min":0,"max":86400,"step":1}',
+                        },
+                        {
+                            "code": "wireless_lowpower",
+                            "type": "Integer",
+                            "values": "not json",
+                        },
+                    ]
+                }
+            }
+        ),
+    ):
+        result = await client.async_get_functions("dev1")
+    assert result["countdown_1"].values == {"min": 0, "max": 86400, "step": 1}
+    assert result["wireless_lowpower"].values == {}
+
+
+@pytest.mark.asyncio
 async def test_send_command() -> None:
     """Commands are sent with correct payload."""
     client = _client(_session())

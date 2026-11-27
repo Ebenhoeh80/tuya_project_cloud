@@ -155,6 +155,19 @@ async def test_number_value() -> None:
 
 
 @pytest.mark.asyncio
+async def test_number_skips_malformed_values() -> None:
+    """Malformed Tuya function values must not break platform setup."""
+    device = _device()
+    device.functions["malformed"] = TuyaFunction("malformed", "Integer", "not json")
+    device.functions["bad_range"] = TuyaFunction(
+        "bad_range", "Integer", {"min": "x", "max": 10}
+    )
+    added = []
+    await number_setup(MagicMock(), _entry(device), lambda e: added.extend(e))
+    assert [entity.entity_description.key for entity in added] == ["volume"]
+
+
+@pytest.mark.asyncio
 async def test_light_brightness() -> None:
     """Light maps 0-100 DPS brightness to 0-255."""
     added = []

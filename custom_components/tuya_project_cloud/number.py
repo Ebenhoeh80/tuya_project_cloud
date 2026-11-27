@@ -33,8 +33,16 @@ async def async_setup_entry(
                 continue
             if function.type != "Integer":
                 continue
-            values = function.values or {}
-            if "min" not in values or "max" not in values:
+            values = function.values
+            if not isinstance(values, dict):
+                continue
+            try:
+                minimum = float(values["min"])
+                maximum = float(values["max"])
+                step = float(values.get("step", 1))
+            except (KeyError, TypeError, ValueError):
+                continue
+            if minimum >= maximum or step <= 0:
                 continue
             entities.append(
                 TuyaNumber(
@@ -43,9 +51,9 @@ async def async_setup_entry(
                     NumberEntityDescription(
                         key=code,
                         name=code.replace("_", " ").title(),
-                        native_min_value=float(values["min"]),
-                        native_max_value=float(values["max"]),
-                        native_step=float(values.get("step", 1)),
+                        native_min_value=minimum,
+                        native_max_value=maximum,
+                        native_step=step,
                     ),
                     code,
                 )

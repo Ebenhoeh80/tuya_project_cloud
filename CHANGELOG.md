@@ -1,5 +1,21 @@
 # Changelog / Änderungen
 
+## [0.2.2] - 2026-11-27
+
+### Deutsch
+
+- Live-Fix: Tuya liefert `values` von Integer-Funktionen teilweise als JSON-String. Der Client normalisiert solche Werte jetzt zu einem Dictionary; die `number`-Plattform überspringt ungültige oder unvollständige Bereiche statt beim Setup abzubrechen.
+- Zwei neue Regressionstests (JSON-String-Normalisierung und robustes Number-Setup); insgesamt 49 Tests grün, Ruff sauber.
+- Version und Dokumentation auf 0.2.2 nachgezogen.
+
+### English
+
+- Live fix: Tuya sometimes returns integer function `values` as a JSON string. The client now normalizes such values into a dictionary; the `number` platform skips invalid or incomplete ranges instead of failing setup.
+- Two new regression tests (JSON-string normalization and robust number setup); 49 tests passing, Ruff clean.
+- Version and documentation updated to 0.2.2.
+
+---
+
 ## [0.2.1] - 2026-11-27
 
 ### Deutsch

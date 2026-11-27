@@ -78,7 +78,7 @@ The live tests showed that the `v1.0/devices` family works for linked devices. B
 4. **Entities**: Dynamic from `functions`/`status` + DPS codes. Platforms: switch, sensor, light, climate, cover, number, camera; additional shadow sensors from the IoT Core thing shadow. Entity descriptions with `device_class`, `native_unit_of_measurement`, `EntityCategory`.
 5. **Device/range**: `DeviceInfo` per Tuya device, `identifiers={(DOMAIN, device_id)}`; child devices where applicable.
 6. **Diagnostics/repairs**: Redaction of tokens, secrets, DPS values with personal data; repairs for auth errors, wrong region, missing API authorization.
-7. **Tests**: `pytest-homeassistant-custom-component`, 0.1.0 intermediate state: 36 tests green, 84 % overall coverage; 0.2.1 state: 47 tests green, `ruff check`/`format` clean. Config flow, coordinator, entity mapping, camera, redaction.
+7. **Tests**: `pytest-homeassistant-custom-component`, 0.1.0 intermediate state: 36 tests green, 84 % overall coverage; 0.2.2 state: 49 tests green, `ruff check`/`format` clean. Config flow, coordinator, entity mapping, camera, redaction.
 
 ## 8. Live proof (2026-11-27) – important rule fulfilled
 
@@ -118,7 +118,7 @@ The command was again **idempotent** (exact read value written back). This prove
 
 | Check | Result |
 |---|---|
-| Unit tests (WSL, Python 3.13, `pytest-homeassistant-custom-component`) | **47 passed** (0.2.1) |
+| Unit tests (WSL, Python 3.13, `pytest-homeassistant-custom-component`) | **49 passed** (0.2.2) |
 | `ruff check` / `ruff format --check` | **All checks passed** / clean |
 | Live smoke test of own client | **Success** (see above) |
 | Live shadow/stream probe of own client | **Success** (8 devices, 23 DPS, HLS allocation; see section 11) |

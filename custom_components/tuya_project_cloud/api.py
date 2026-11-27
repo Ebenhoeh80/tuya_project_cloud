@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import json
 import logging
 import time
 from dataclasses import dataclass, field
@@ -29,6 +30,19 @@ from .const import (
 _LOGGER = logging.getLogger(__name__)
 
 EMPTY_BODY_HASH = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+
+
+def _function_values(raw: Any) -> dict[str, Any]:
+    """Normalize Tuya function values, which may be a JSON-encoded string."""
+    if isinstance(raw, dict):
+        return raw
+    if isinstance(raw, str):
+        try:
+            parsed = json.loads(raw)
+        except ValueError:
+            return {}
+        return parsed if isinstance(parsed, dict) else {}
+    return {}
 
 
 class TuyaApiError(Exception):
@@ -241,7 +255,7 @@ class TuyaOpenApi:
             item["code"]: TuyaFunction(
                 code=item["code"],
                 type=item.get("type", ""),
-                values=item.get("values", {}),
+                values=_function_values(item.get("values", {})),
             )
             for item in functions
             if isinstance(item, dict) and "code" in item
@@ -259,7 +273,7 @@ class TuyaOpenApi:
                     definitions[item["code"]] = TuyaFunction(
                         code=item["code"],
                         type=item.get("type", ""),
-                        values=item.get("values", {}),
+                        values=_function_values(item.get("values", {})),
                     )
         return definitions
 

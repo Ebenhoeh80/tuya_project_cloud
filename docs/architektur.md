@@ -140,7 +140,7 @@ Skalierung `(unbelegt im Detail)`: Spannung/Strom/Leistung/Energie aus `x_metric
 - `tests/test_camera.py`: frische HLS-URL, Offline-Fall, Option, Stream-Fehler.
 - `tests/test_diagnostics.py`: Redaction inkl. Stream-URL/`m3u8`, nur Shadow-Codes im Output.
 
-Ist: 47 Tests grün, `ruff check` und `ruff format --check` sauber (WSL, Python 3.13). `pytest.ini` setzt `asyncio_mode = auto`. Die Kamera-Tests benötigen zusätzlich `PyTurboJPEG`, weil HA `homeassistant.components.camera` importiert.
+Ist: 49 Tests grün, `ruff check` und `ruff format --check` sauber (WSL, Python 3.13). `pytest.ini` setzt `asyncio_mode = auto`. Die Kamera-Tests benötigen zusätzlich `PyTurboJPEG`, weil HA `homeassistant.components.camera` importiert.
 
 ## 9. Iterationsplan
 
