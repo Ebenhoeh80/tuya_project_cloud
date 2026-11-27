@@ -8,7 +8,7 @@
 - Der Proxy registriert jede Kamera unter einem opaken Token, schreibt Key- und Segment-URLs auf lokale Pfade mit `.ts`/`.key` um und erneuert eine Allokation automatisch nach 120 Sekunden oder bei einer fehlgeschlagenen Playlist. Meldet der HA-Stream-Worker eine unbrauchbare Quelle, wird die Allokation verworfen und `Stream.update_source()` mit derselben lokalen URL aufgerufen. Die go2rtc-Stream-Registry muss dadurch nicht neu registriert werden.
 - Stream-URLs, Tokens und AES-Keys erscheinen weiterhin nicht in State, Attributen, eigenen Logs, Recorder, Diagnostics oder Config Entry. Die lokalen Proxy-Pfade sind opak und enthalten keine Tuya-Geheimnisse; der 144-Bit-Pfad-Token wirkt aber wie ein Bearer-Zugang zum Livestream und sollte nicht öffentlich geteilt werden. Beim Entladen des Config Entries werden alle Routen entfernt. Es werden keine Geräte-Schreibbefehle eingeführt; die Wallbox bleibt read-only.
 - Alle bestehenden Entity-IDs, Unique-IDs und Automationen bleiben unverändert. WebRTC wird weiterhin nicht angeboten (`device not supports`); die signierte RTSPS-Alternative lieferte in der Probe keine Frames und wird nicht verwendet.
-- Qualität: 168 Tests grün, Ruff und Formatierung sauber. Eine End-to-End-Probe beider Kameras lief je 180 Sekunden über den Proxy – PyAV und ffmpeg (go2rtc-kompatibel) – ohne Fehler. Unabhängige Freigabe durch Claude Sonnet 5.5 ohne verbleibende Blocker.
+- Qualität: 168 Tests grün, Ruff und Formatierung sauber. Eine End-to-End-Probe beider Kameras lief je 180 Sekunden über den Proxy – PyAV und ffmpeg (go2rtc-kompatibel) – ohne Fehler. Ein zusätzlicher 10-Minuten-Soak je Kamera über die volle `RESOURCE_TTL` (600 s) endete ebenfalls mit `exit=0` und leeren Fehlerlisten. Unabhängige Freigabe durch Claude Sonnet 5.5 ohne verbleibende Blocker.
 
 ### English
 
@@ -16,7 +16,7 @@
 - The proxy registers each camera under an opaque token, rewrites key and segment URLs to local `.ts`/`.key` paths and renews an allocation after 120 seconds or when a playlist request fails. If HA's stream worker reports an unusable source, the allocation is dropped and `Stream.update_source()` is called with the same local URL. The go2rtc stream registry therefore does not need to be re-registered.
 - Stream URLs, tokens and AES keys still never appear in state, attributes, integration logs, recorder, diagnostics or the config entry. The local proxy paths are opaque and contain no Tuya secrets; the 144-bit path token nevertheless acts like a bearer for the live stream and should not be shared publicly. All routes are removed when the config entry is unloaded. No device write commands are introduced; the wallbox stays read-only.
 - All existing entity IDs, unique IDs and automations remain unchanged. WebRTC is still not offered (`device not supports`); the signed RTSP alternative produced no frames in the probe and is not used.
-- Quality: 168 tests passing, Ruff and formatting clean. An end-to-end probe of both cameras ran for 180 seconds each through the proxy – with PyAV and ffmpeg (go2rtc-compatible) – without errors. Independent approval by Claude Sonnet 5.5 with no remaining blockers.
+- Quality: 168 tests passing, Ruff and formatting clean. An end-to-end probe of both cameras ran for 180 seconds each through the proxy – with PyAV and ffmpeg (go2rtc-compatible) – without errors. An additional 10-minute soak per camera across the full `RESOURCE_TTL` (600 s) also finished with `exit=0` and empty error lists. Independent approval by Claude Sonnet 5.5 with no remaining blockers.
 
 ---
 
