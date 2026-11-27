@@ -1,0 +1,86 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect Tuya Cloud project",
+        "description": "Only Access ID, Access Secret and region are required. No Smart Life account and no app password.",
+        "data": {
+          "access_id": "Access ID (Client ID)",
+          "access_secret": "Access Secret (Client Secret)",
+          "region": "Region"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Renew Tuya access",
+        "description": "The Tuya project could not be authenticated. Please enter the credentials again.",
+        "data": {
+          "access_id": "Access ID (Client ID)",
+          "access_secret": "Access Secret (Client Secret)",
+          "region": "Region"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Access ID, Access Secret or signature is invalid.",
+      "cannot_connect": "Tuya Cloud is unreachable.",
+      "unknown": "Unexpected error during sign-in."
+    },
+    "abort": {
+      "already_configured": "This Tuya project is already configured.",
+      "reauth_successful": "Authentication renewed successfully."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Tuya Project Cloud options",
+        "data": {
+          "scan_interval": "Polling interval in seconds",
+          "enable_shadow": "Read charger data from the IoT Core thing shadow",
+          "enable_camera": "Provide live camera streams"
+        }
+      }
+    }
+  },
+  "entity": {
+    "camera": {
+      "live": { "name": "Live stream" }
+    },
+    "sensor": {
+      "work_state": { "name": "Work state" },
+      "work_state_debug": { "name": "Charge state" },
+      "voltage_l1": { "name": "Voltage L1" },
+      "voltage_l2": { "name": "Voltage L2" },
+      "voltage_l3": { "name": "Voltage L3" },
+      "current_l1": { "name": "Current L1" },
+      "current_l2": { "name": "Current L2" },
+      "current_l3": { "name": "Current L3" },
+      "power": { "name": "Charging power" },
+      "energy_session": { "name": "Energy this session" },
+      "charge_current": { "name": "Charge current" },
+      "max_current_cfg": { "name": "Maximum current" },
+      "energy_total": { "name": "Total energy" },
+      "firmware": { "name": "Firmware" },
+      "rcd_type": { "name": "RCD type" },
+      "heartbeat": { "name": "Heartbeat" }
+    }
+  },
+  "issues": {
+    "api_not_authorized": {
+      "title": "Tuya API not authorized",
+      "description": "The project is not allowed to call the device API. Enable it in the Tuya console under 'Service API → Add Authorization'."
+    },
+    "iot_core_not_authorized": {
+      "title": "IoT Core not authorized",
+      "description": "The thing shadow API is not enabled for this project. Enable IoT Core in the Tuya console and authorize the cloud project."
+    },
+    "command_not_authorized": {
+      "title": "Device command not allowed",
+      "description": "Tuya rejected a device command (1106). Check the permissions of the cloud project."
+    },
+    "region_mismatch": {
+      "title": "Wrong region",
+      "description": "No devices were found. Check the region of the Tuya project and whether an app account is linked."
+    }
+  }
+}

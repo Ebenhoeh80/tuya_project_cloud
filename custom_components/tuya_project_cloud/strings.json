@@ -1,0 +1,86 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Tuya Cloud-Projekt verbinden",
+        "description": "Nur Access ID, Access Secret und Region werden benötigt. Kein Smart-Life-Konto und kein App-Passwort.",
+        "data": {
+          "access_id": "Access ID (Client ID)",
+          "access_secret": "Access Secret (Client Secret)",
+          "region": "Region"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Tuya-Zugang erneuern",
+        "description": "Das Tuya-Projekt konnte nicht authentifiziert werden. Bitte die Zugangsdaten erneut eingeben.",
+        "data": {
+          "access_id": "Access ID (Client ID)",
+          "access_secret": "Access Secret (Client Secret)",
+          "region": "Region"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Access ID, Access Secret oder Signatur ungültig.",
+      "cannot_connect": "Tuya Cloud nicht erreichbar.",
+      "unknown": "Unerwarteter Fehler bei der Anmeldung."
+    },
+    "abort": {
+      "already_configured": "Dieses Tuya-Projekt ist bereits konfiguriert.",
+      "reauth_successful": "Authentifizierung erfolgreich erneuert."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Tuya Project Cloud Optionen",
+        "data": {
+          "scan_interval": "Abfrageintervall in Sekunden",
+          "enable_shadow": "Laderdaten aus dem IoT-Core-Shadow lesen",
+          "enable_camera": "Livekameras bereitstellen"
+        }
+      }
+    }
+  },
+  "entity": {
+    "camera": {
+      "live": { "name": "Livebild" }
+    },
+    "sensor": {
+      "work_state": { "name": "Arbeitszustand" },
+      "work_state_debug": { "name": "Ladezustand" },
+      "voltage_l1": { "name": "Spannung L1" },
+      "voltage_l2": { "name": "Spannung L2" },
+      "voltage_l3": { "name": "Spannung L3" },
+      "current_l1": { "name": "Strom L1" },
+      "current_l2": { "name": "Strom L2" },
+      "current_l3": { "name": "Strom L3" },
+      "power": { "name": "Ladeleistung" },
+      "energy_session": { "name": "Energie dieser Ladung" },
+      "charge_current": { "name": "Ladestrom" },
+      "max_current_cfg": { "name": "Maximalstrom" },
+      "energy_total": { "name": "Energie gesamt" },
+      "firmware": { "name": "Firmware" },
+      "rcd_type": { "name": "Fehlerstromschutz" },
+      "heartbeat": { "name": "Heartbeat" }
+    }
+  },
+  "issues": {
+    "api_not_authorized": {
+      "title": "Tuya-API nicht autorisiert",
+      "description": "Das Projekt darf die Geräte-API nicht aufrufen. In der Tuya-Konsole unter 'Service API → Add Authorization' die Device-API freischalten."
+    },
+    "iot_core_not_authorized": {
+      "title": "IoT-Core nicht autorisiert",
+      "description": "Die Thing-Shadow-API ist für das Projekt nicht freigegeben. In der Tuya-Konsole IoT Core aktivieren und das Cloud-Projekt autorisieren."
+    },
+    "command_not_authorized": {
+      "title": "Gerätebefehl nicht erlaubt",
+      "description": "Die Steuerung eines Geräts wurde von Tuya abgelehnt (1106). Prüfe die Berechtigungen des Cloud-Projekts."
+    },
+    "region_mismatch": {
+      "title": "Falsche Region",
+      "description": "Es wurden keine Geräte gefunden. Prüfe die Region des Tuya-Projekts und ob ein App-Konto verknüpft ist."
+    }
+  }
+}

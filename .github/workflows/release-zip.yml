@@ -1,0 +1,15 @@
+name: Release zip
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    uses: Ebenhoeh80/.github/.github/workflows/release-zip.yml@027a1a4938327366197450ddc9d3bfc785e0fea2 # v1
+    with:
+      domain: tuya_project_cloud
