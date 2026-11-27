@@ -360,6 +360,39 @@ async def test_switch_keeps_legacy_codes_and_excludes_light_codes() -> None:
 
 
 @pytest.mark.asyncio
+async def test_shadow_sensors_available_without_legacy_status() -> None:
+    """Shadow sensors follow the shadow, not the unsupported legacy status."""
+    device = _shadow_device()
+    device.last_update_success = False
+    added: list = []
+    await sensor_setup(MagicMock(), _entry(device), lambda e: added.extend(e))
+    assert added
+    assert all(entity.available for entity in added)
+
+
+@pytest.mark.asyncio
+async def test_shadow_sensors_unavailable_without_fresh_shadow() -> None:
+    """Shadow sensors need fresh shadow data and an online device."""
+    device = _shadow_device()
+    added: list = []
+    await sensor_setup(MagicMock(), _entry(device), lambda e: added.extend(e))
+    assert added
+    entity = added[0]
+    assert entity.available is True
+
+    device.shadow = {}
+    assert entity.available is False
+
+    device.shadow = _shadow_device().shadow
+    device.shadow_last_update_success = False
+    assert entity.available is False
+
+    device.shadow_last_update_success = True
+    device.online = False
+    assert entity.available is False
+
+
+@pytest.mark.asyncio
 async def test_stale_device_is_unavailable() -> None:
     """A failed status read marks DPS entities unavailable."""
     device = _device()

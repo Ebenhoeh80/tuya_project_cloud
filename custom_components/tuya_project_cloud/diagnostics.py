@@ -57,6 +57,8 @@ async def async_get_config_entry_diagnostics(
                     "category": device.category,
                     "product_id": device.product_id,
                     "online": device.online,
+                    "last_update_success": device.last_update_success,
+                    "shadow_last_update_success": device.shadow_last_update_success,
                     "status_codes": sorted(device.status),
                     "function_codes": sorted(device.functions),
                     "shadow_codes": sorted(device.shadow),

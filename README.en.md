@@ -8,7 +8,7 @@ A Home Assistant custom integration that controls devices **exclusively through 
 
 Feasibility proven live on 2026-11-27: token, device list, status, functions and an idempotent command (`POST /v1.0/devices/{id}/commands`) all work with the project token alone. Also implemented live: the `dé EV Charger` returns 23 DPS values via the IoT Core thing shadow, mapped to 16 sensors; the door viewer delivers a short-lived HLS live stream via `stream/actions/allocate`. See the [feasibility report](docs/machbarkeit.en.md), sections 10 and 11.
 
-State 0.2.5: 109 tests passing, Ruff clean, minimum Home Assistant version 2025.8.0. The upgrade is installed and validated in the live instance: config entry `loaded`, 8 devices, 73/73 entity IDs unchanged, 0 repairs, `config_check: valid`. The 16 charger sensors were `unavailable` at the final spot check because the Tuya cloud API reported a device-specific error; the read and availability code is unchanged from 0.2.4.
+State 0.2.6: 117 tests passing, Ruff clean, minimum Home Assistant version 2025.8.0. The live installation covers 8 devices with 73/73 unchanged entity IDs, config entry `loaded` and 0 repairs. 0.2.6 fixes the `dé EV Charger` being shown as unavailable despite fresh IoT Core shadow values: Tuya rejects the legacy `status`/`functions` endpoints for this device (errno `2003`/`2009`), so shadow sensors now derive their availability from the actual shadow data. Existing entity IDs, automations and configurations remain unchanged.
 
 ## Prerequisites
 

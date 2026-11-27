@@ -16,8 +16,10 @@ from custom_components.tuya_project_cloud.api import (
     TuyaApiError,
     TuyaAuthenticationError,
     TuyaAuthorizationError,
+    TuyaConnectionError,
     TuyaFunction,
     TuyaShadowProperty,
+    TuyaUnsupportedError,
 )
 from custom_components.tuya_project_cloud.coordinator import (
     TuyaProjectCloudCoordinator,
@@ -228,6 +230,139 @@ async def test_failed_device_read_marks_data_stale(hass, mock_config_entry) -> N
     second = await coordinator._async_update_data()
     assert second["dev1"].last_update_success is False
     assert second["dev1"].status == {"switch": True}
+
+
+@pytest.mark.asyncio
+async def test_unsupported_legacy_status_is_not_a_failure(
+    hass, mock_config_entry
+) -> None:
+    """IoT Core-only devices stay successful though legacy endpoints reject them."""
+    coordinator = _make_coordinator(hass, mock_config_entry)
+    coordinator.client.async_get_devices = AsyncMock(
+        return_value=[
+            {
+                "id": "dev2",
+                "name": "Charger",
+                "category": "dj",
+                "product_id": "p2",
+                "online": True,
+            }
+        ]
+    )
+    coordinator.client.async_get_status = AsyncMock(
+        side_effect=TuyaUnsupportedError("function not support", code=2003)
+    )
+    coordinator.client.async_get_functions = AsyncMock(
+        side_effect=TuyaUnsupportedError("not support this device", code=2009)
+    )
+    coordinator.client.async_get_specifications = AsyncMock(
+        side_effect=TuyaUnsupportedError("function not support", code=2003)
+    )
+    coordinator.client.async_get_thing_shadow = AsyncMock(
+        return_value={"x_work_state": TuyaShadowProperty("x_work_state", "101", 101, 1)}
+    )
+    data = await coordinator._async_update_data()
+    assert data["dev2"].last_update_success is True
+    assert data["dev2"].status == {}
+    assert "x_work_state" in data["dev2"].shadow
+    assert data["dev2"].shadow_last_update_success is True
+    assert coordinator.api_not_authorized is False
+    assert coordinator.iot_core_not_authorized is False
+
+
+@pytest.mark.asyncio
+async def test_shadow_failure_keeps_device_available_but_marks_shadow_stale(
+    hass, mock_config_entry
+) -> None:
+    """A shadow error after an unsupported status must not pretend fresh data."""
+    coordinator = _make_coordinator(hass, mock_config_entry)
+    coordinator.client.async_get_devices = AsyncMock(
+        return_value=[
+            {
+                "id": "dev2",
+                "name": "Charger",
+                "category": "dj",
+                "product_id": "p2",
+                "online": True,
+            }
+        ]
+    )
+    coordinator.client.async_get_status = AsyncMock(
+        side_effect=TuyaUnsupportedError("function not support", code=2003)
+    )
+    coordinator.client.async_get_functions = AsyncMock(return_value={})
+    coordinator.client.async_get_specifications = AsyncMock(return_value={})
+    coordinator.client.async_get_thing_shadow = AsyncMock(
+        side_effect=TuyaConnectionError("timeout")
+    )
+    data = await coordinator._async_update_data()
+    assert data["dev2"].last_update_success is True
+    assert data["dev2"].shadow == {}
+    assert data["dev2"].shadow_last_update_success is False
+
+
+@pytest.mark.asyncio
+async def test_shadow_authorization_error_still_raises_iot_core_issue(
+    hass, mock_config_entry
+) -> None:
+    """Unsupported legacy status must not hide a missing IoT Core permission."""
+    coordinator = _make_coordinator(hass, mock_config_entry)
+    coordinator.client.async_get_devices = AsyncMock(
+        return_value=[
+            {
+                "id": "dev2",
+                "name": "Charger",
+                "category": "dj",
+                "product_id": "p2",
+                "online": True,
+            }
+        ]
+    )
+    coordinator.client.async_get_status = AsyncMock(
+        side_effect=TuyaUnsupportedError("function not support", code=2003)
+    )
+    coordinator.client.async_get_functions = AsyncMock(
+        side_effect=TuyaUnsupportedError("not support this device", code=2009)
+    )
+    coordinator.client.async_get_specifications = AsyncMock(return_value={})
+    coordinator.client.async_get_thing_shadow = AsyncMock(
+        side_effect=TuyaAuthorizationError("not authorized", code=28841105)
+    )
+    with patch(
+        "custom_components.tuya_project_cloud.coordinator.async_update_issues"
+    ) as update_issues:
+        data = await coordinator._async_update_data()
+    assert data["dev2"].shadow_last_update_success is False
+    assert coordinator.api_not_authorized is False
+    assert coordinator.iot_core_not_authorized is True
+    update_issues.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_unsupported_functions_after_successful_status(
+    hass, mock_config_entry
+) -> None:
+    """Errno 2009 for functions alone must not mark a healthy device as stale."""
+    coordinator = _make_coordinator(hass, mock_config_entry)
+    coordinator.client.async_get_devices = AsyncMock(
+        return_value=[
+            {
+                "id": "dev1",
+                "name": "Plug",
+                "category": "cz",
+                "product_id": "p1",
+                "online": True,
+            }
+        ]
+    )
+    coordinator.client.async_get_status = AsyncMock(return_value={"switch": True})
+    coordinator.client.async_get_functions = AsyncMock(
+        side_effect=TuyaUnsupportedError("not support this device", code=2009)
+    )
+    coordinator.client.async_get_specifications = AsyncMock(return_value={})
+    data = await coordinator._async_update_data()
+    assert data["dev1"].last_update_success is True
+    assert data["dev1"].status == {"switch": True}
 
 
 @pytest.mark.asyncio

@@ -16,6 +16,7 @@ from custom_components.tuya_project_cloud.api import (
     TuyaAuthorizationError,
     TuyaConnectionError,
     TuyaOpenApi,
+    TuyaUnsupportedError,
 )
 
 
@@ -202,6 +203,25 @@ async def test_send_command() -> None:
         "/v1.0/devices/dev1/commands",
         body={"commands": [{"code": "switch", "value": True}]},
     )
+
+
+@pytest.mark.parametrize("code", [2003, 2009])
+@pytest.mark.asyncio
+async def test_unsupported_endpoint_error(code: int) -> None:
+    """Errno 2003/2009 maps to TuyaUnsupportedError for IoT Core-only devices."""
+    client = _client(_session())
+    response = MagicMock()
+    response.status = 200
+    response.json = AsyncMock(
+        return_value={"success": False, "code": code, "msg": "not supported"}
+    )
+    response.__aenter__ = AsyncMock(return_value=response)
+    response.__aexit__ = AsyncMock(return_value=None)
+    client._session = MagicMock()
+    client._session.request = MagicMock(return_value=response)
+    with pytest.raises(TuyaUnsupportedError) as exc:
+        await client.async_get_status("dev1")
+    assert exc.value.code == code
 
 
 @pytest.mark.asyncio

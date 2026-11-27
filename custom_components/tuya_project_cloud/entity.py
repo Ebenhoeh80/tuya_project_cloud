@@ -106,10 +106,13 @@ class TuyaShadowEntity(CoordinatorEntity[TuyaProjectCloudCoordinator]):
 
     @property
     def available(self) -> bool:
-        """Return availability based on device online state."""
+        """Return availability from a successfully refreshed IoT Core shadow."""
         device = self._tuya_device
         return super().available and bool(
-            device and device.online and device.last_update_success
+            device
+            and device.online
+            and device.shadow
+            and device.shadow_last_update_success
         )
 
     @property

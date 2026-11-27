@@ -22,6 +22,7 @@ from .api import (
     TuyaConnectionError,
     TuyaDevice,
     TuyaOpenApi,
+    TuyaUnsupportedError,
 )
 from .const import (
     CONF_ENABLE_SHADOW,
@@ -128,6 +129,16 @@ class TuyaProjectCloudCoordinator(DataUpdateCoordinator[dict[str, TuyaDevice]]):
             try:
                 device.status = await self.client.async_get_status(device_id)
                 device.last_update_success = True
+            except TuyaUnsupportedError as err:
+                # IoT Core-only devices serve values through the thing shadow,
+                # not the legacy status endpoint. This is expected, not a failure.
+                device.last_update_success = True
+                device.status = {}
+                _LOGGER.debug(
+                    "Legacy status not supported for device %s: %s",
+                    label,
+                    error_label(err),
+                )
             except TuyaAuthorizationError as err:
                 device.last_update_success = False
                 if err.code == ERR_API_NOT_AUTHORIZED:
@@ -142,6 +153,12 @@ class TuyaProjectCloudCoordinator(DataUpdateCoordinator[dict[str, TuyaDevice]]):
             if not device.functions:
                 try:
                     device.functions = await self.client.async_get_functions(device_id)
+                except TuyaUnsupportedError as err:
+                    _LOGGER.debug(
+                        "Legacy functions not supported for device %s: %s",
+                        label,
+                        error_label(err),
+                    )
                 except TuyaAuthorizationError as err:
                     if err.code == ERR_API_NOT_AUTHORIZED:
                         api_denied = True
@@ -156,6 +173,12 @@ class TuyaProjectCloudCoordinator(DataUpdateCoordinator[dict[str, TuyaDevice]]):
                 try:
                     device.specifications = await self.client.async_get_specifications(
                         device_id
+                    )
+                except TuyaUnsupportedError as err:
+                    _LOGGER.debug(
+                        "Legacy specifications not supported for device %s: %s",
+                        label,
+                        error_label(err),
                     )
                 except (TuyaApiError, TuyaConnectionError) as err:
                     _LOGGER.debug(
@@ -173,8 +196,10 @@ class TuyaProjectCloudCoordinator(DataUpdateCoordinator[dict[str, TuyaDevice]]):
             if self._enable_shadow and device.online and shadow_due:
                 try:
                     device.shadow = await self.client.async_get_thing_shadow(device_id)
+                    device.shadow_last_update_success = True
                     self._last_shadow_refresh[device_id] = now
                 except TuyaAuthorizationError as err:
+                    device.shadow_last_update_success = False
                     if err.code == ERR_API_NOT_AUTHORIZED:
                         iot_core_denied = True
                     _LOGGER.debug(
@@ -183,6 +208,7 @@ class TuyaProjectCloudCoordinator(DataUpdateCoordinator[dict[str, TuyaDevice]]):
                         error_label(err),
                     )
                 except (TuyaApiError, TuyaConnectionError) as err:
+                    device.shadow_last_update_success = False
                     _LOGGER.debug(
                         "Cannot read shadow for device %s: %s",
                         label,

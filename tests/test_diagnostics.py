@@ -56,6 +56,8 @@ async def test_entry_diagnostics(hass, mock_config_entry) -> None:
     assert "test_access_secret" not in text
     assert "test_access_id" not in text
     assert result["device_count"] == 1
+    assert result["devices"][0]["last_update_success"] is True
+    assert result["devices"][0]["shadow_last_update_success"] is True
     assert result["devices"][0]["shadow_codes"] == ["x_work_state"]
     assert "300" not in text
     assert result["devices"][0]["id"] == redact_identifier("dev1")

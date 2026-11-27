@@ -25,6 +25,8 @@ from .const import (
     ENDPOINT_THING_SHADOW,
     ENDPOINT_TOKEN,
     ERR_API_NOT_AUTHORIZED,
+    ERR_DEVICE_NOT_SUPPORTED,
+    ERR_FUNCTION_NOT_SUPPORTED,
     ERR_NO_PERMISSION,
     ERR_SIGN_INVALID,
     REGIONS,
@@ -61,6 +63,15 @@ class TuyaAuthorizationError(TuyaApiError):
 
     def __init__(self, message: str, *, code: int | None = None) -> None:
         """Initialize the error with an optional Tuya errno."""
+        super().__init__(message)
+        self.code = code
+
+
+class TuyaUnsupportedError(TuyaApiError):
+    """The device does not expose this legacy endpoint (IoT Core-only device)."""
+
+    def __init__(self, message: str, *, code: int | None = None) -> None:
+        """Initialize the error with the Tuya errno."""
         super().__init__(message)
         self.code = code
 
@@ -104,6 +115,7 @@ class TuyaDevice:
     functions: dict[str, TuyaFunction] = field(default_factory=dict)
     specifications: dict[str, TuyaFunction] = field(default_factory=dict)
     shadow: dict[str, TuyaShadowProperty] = field(default_factory=dict)
+    shadow_last_update_success: bool = True
 
 
 class TuyaOpenApi:
@@ -221,6 +233,8 @@ class TuyaOpenApi:
                 raise TuyaAuthorizationError(message, code=code)
             if code == ERR_NO_PERMISSION:
                 raise TuyaAuthorizationError(message, code=code)
+            if code in (ERR_FUNCTION_NOT_SUPPORTED, ERR_DEVICE_NOT_SUPPORTED):
+                raise TuyaUnsupportedError(message, code=code)
             if ERR_SIGN_INVALID in message.lower() or code in (1004, 1005):
                 raise TuyaAuthenticationError(message)
             if status in (401, 403):

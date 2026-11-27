@@ -58,6 +58,10 @@ PLATFORMS = (
 # Error codes observed or documented.
 ERR_SIGN_INVALID = "sign invalid"
 ERR_NO_PERMISSION = 1106
+# IoT Core-only devices reject the legacy device endpoints but serve the thing
+# shadow normally. They are expected, not failures.
+ERR_FUNCTION_NOT_SUPPORTED = 2003
+ERR_DEVICE_NOT_SUPPORTED = 2009
 ERR_API_NOT_AUTHORIZED = 28841105
 
 ISSUE_AUTH_FAILED = "auth_failed"

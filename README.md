@@ -8,7 +8,7 @@ Eine Home-Assistant-Custom-Integration, die Geräte **ausschließlich über die 
 
 Machbarkeit am 27.11.2026 live bewiesen: Token, Geräteliste, Status, Funktionen und ein idempotenter Steuerbefehl (`POST /v1.0/devices/{id}/commands`) funktionieren mit dem reinen Projekt-Token. Ebenfalls live umgesetzt: Der `dé EV Charger` liefert über den IoT-Core-Shadow 23 DPS-Werte, aus denen 16 Sensoren entstehen; der Türspion liefert über `stream/actions/allocate` ein kurzlebiges HLS-Livebild. Siehe [Machbarkeitsbericht](docs/machbarkeit.md), Abschnitte 10 und 11.
 
-Stand 0.2.5: 109 Tests grün, Ruff sauber, Mindestversion Home Assistant 2025.8.0. Das Upgrade ist in der Live-Instanz installiert und validiert: Config Entry `loaded`, 8 Geräte, 73/73 Entity-IDs unverändert, 0 Repairs, `config_check: valid`. Die 16 Lader-Sensoren waren bei der abschließenden Stichprobe `unavailable`, weil die Tuya-Cloud-API für dieses Gerät einen device-spezifischen Fehler meldete; der Lese- und Verfügbarkeitscode ist gegenüber 0.2.4 unverändert.
+Stand 0.2.6: 117 Tests grün, Ruff sauber, Mindestversion Home Assistant 2025.8.0. Die Live-Installation umfasst 8 Geräte mit 73/73 unveränderten Entity-IDs, Config Entry `loaded` und 0 Repairs. 0.2.6 behebt, dass der `dé EV Charger` trotz frischer IoT-Core-Shadow-Werte als unverfügbar erschien: Tuya lehnt für dieses Gerät die klassischen `status`/`functions`-Endpunkte ab (errno `2003`/`2009`), weshalb die Shadow-Sensoren ihre Verfügbarkeit jetzt aus den tatsächlichen Shadow-Daten ableiten. Bestehende Entity-IDs, Automationen und Konfigurationen bleiben unverändert.
 
 ## Voraussetzungen
 
