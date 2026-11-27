@@ -17,6 +17,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .api import TuyaApiError, TuyaDevice
 from .const import CONF_ENABLE_CAMERA, DEFAULT_ENABLE_CAMERA
 from .entity import tuya_device_info
+from .stream_proxy import TuyaStreamProxy, async_register_stream_proxy
 from .utils import redact_identifier
 
 if TYPE_CHECKING:
@@ -46,12 +47,15 @@ async def async_setup_entry(
     if not entry.options.get(CONF_ENABLE_CAMERA, DEFAULT_ENABLE_CAMERA):
         return
     coordinator = entry.runtime_data
-    entities = [
-        TuyaCamera(coordinator, device)
-        for device in (coordinator.data or {}).values()
-        if device.category in CAMERA_CATEGORIES
-        or any("stream" in code for code in device.functions)
-    ]
+    proxy = async_register_stream_proxy(hass)
+    entities = []
+    for device in (coordinator.data or {}).values():
+        if device.category not in CAMERA_CATEGORIES and not any(
+            "stream" in code for code in device.functions
+        ):
+            continue
+        token = proxy.register(device.id, coordinator)
+        entities.append(TuyaCamera(coordinator, device, token, proxy))
     async_add_entities(entities)
 
 
@@ -64,7 +68,11 @@ class TuyaCamera(CoordinatorEntity["TuyaProjectCloudCoordinator"], Camera):
     _unrecorded_attributes = frozenset(MATCH_ALL)
 
     def __init__(
-        self, coordinator: TuyaProjectCloudCoordinator, device: TuyaDevice
+        self,
+        coordinator: TuyaProjectCloudCoordinator,
+        device: TuyaDevice,
+        proxy_token: str | None = None,
+        proxy: TuyaStreamProxy | None = None,
     ) -> None:
         """Initialize the camera entity."""
         super().__init__(coordinator)
@@ -73,6 +81,8 @@ class TuyaCamera(CoordinatorEntity["TuyaProjectCloudCoordinator"], Camera):
         self._device_id = device.id
         self._attr_unique_id = f"{device.id}_live"
         self._attr_device_info = tuya_device_info(device)
+        self._proxy_token = proxy_token
+        self._proxy = proxy
         self._renewal_lock: asyncio.Lock | None = None
         self._last_renewal: float | None = None
 
@@ -135,29 +145,35 @@ class TuyaCamera(CoordinatorEntity["TuyaProjectCloudCoordinator"], Camera):
             device = self._tuya_device
             if not device or not device.online or not device.last_update_success:
                 return
-            try:
-                source = await self.coordinator.client.async_allocate_stream(
-                    self._device_id, "hls"
-                )
-            except TuyaApiError:
-                _LOGGER.debug(
-                    "Cannot renew a stream for camera %s (%s)",
-                    redact_identifier(self._device_id),
-                    type(self).__name__,
-                )
-                return
+            if self._proxy_token and self._proxy is not None:
+                self._proxy.invalidate(self._proxy_token)
+                source = self._proxy.source_url(self._proxy_token)
+            else:
+                try:
+                    source = await self.coordinator.client.async_allocate_stream(
+                        self._device_id, "hls"
+                    )
+                except TuyaApiError:
+                    _LOGGER.debug(
+                        "Cannot renew a stream for camera %s (%s)",
+                        redact_identifier(self._device_id),
+                        type(self).__name__,
+                    )
+                    return
             if self.stream is not stream:
                 return
             stream.update_source(source)
             self._last_renewal = time.monotonic()
 
     async def stream_source(self) -> str | None:
-        """Allocate a fresh signed URL; never expose or log it as an attribute."""
+        """Return a stable local proxy URL; never expose signed URLs."""
         device = self._tuya_device
         if not device or not device.online or not device.last_update_success:
             return None
         if self.stream is not None and not self.stream.available:
             self.stream = None
+        if self._proxy_token and self._proxy is not None:
+            return self._proxy.source_url(self._proxy_token)
         try:
             return await self.coordinator.client.async_allocate_stream(
                 self._device_id, "hls"

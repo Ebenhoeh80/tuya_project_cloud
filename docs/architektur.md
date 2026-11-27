@@ -23,7 +23,7 @@ Home-Assistant-Custom-Integration, die **ausschließlich die Tuya OpenAPI** mit 
 | Diagnostics mit Redaction | Tokens, Secrets und personenbezogene DPS-Werte dürfen nie in Diagnostics erscheinen. |
 | IoT-Core-Shadow für Laderdaten | Die klassischen `/status`, `/functions` und `/specifications` liefern beim Charger keine Werte; nur der Thing-Shadow ist autorisiert und liefert 23 DPS. |
 | Flache Sensoren statt JSON-Attribute | `x_metrics` und `x_charger_info` werden in `shadow.py` zerlegt, skaliert und als eigene Sensoren mit `device_class`/Einheit/`state_class` abgebildet. |
-| Kamera mit frischer HLS-URL | `stream_source()` allokiert pro Streamstart neu; die URL bleibt nur im Speicher und nie in State/Attributen/Recorder. HA's `Camera.async_create_stream()` liefert das Lock. Bei einem vom Worker gemeldeten Fehler ersetzt `Stream.update_source()` die abgelaufene Quelle (Mindestabstand 10 s), weil HA den Stream sonst mit derselben URL endlos retryt. |
+| Kamera mit lokalem HLS-Re-Proxy | `stream_source()` liefert eine stabile lokale URL mit opakem Token. Der Proxy allokiert signed URLs, AES-Keys und Segmente im Speicher und schreibt sie in keine State-/Log-/Diagnostics-Ausgabe. Bei einem vom Worker gemeldeten Fehler verwirft er die Allokation und ruft `Stream.update_source()` mit derselben lokalen URL auf (Mindestabstand 10 s); die go2rtc-Registry bleibt dadurch stabil. |
 | `OptionsFlowWithReload` | Shadow- und Kamera-Optionen erfordern einen Neuaufbau der Plattformen; HA lädt den Entry nach dem Speichern automatisch neu. |
 
 ## 3. Datenfluss
@@ -65,6 +65,7 @@ Config Flow (access_id, access_secret, region)
 | `coordinator.py` | `DataUpdateCoordinator[dict[str, TuyaDevice]]`, Geräte-Mapping, Shadow-Refresh alle 60 s, veraltete Geräte→unavailable, Fehler→Repairs/Reauth |
 | `entity.py` | `TuyaProjectCloudEntity` (DPS) und `TuyaShadowEntity` (Shadow): `device_info`, `unique_id`, `available` |
 | `switch.py`, `sensor.py`, `light.py`, `climate.py`, `cover.py`, `number.py`, `camera.py` | Dynamische Entitäten aus DPS- und Shadow-Codes bzw. HLS-Stream |
+| `stream_proxy.py` | Lokaler HLS-Re-Proxy: opake Tokens, Rewrite von Key/Segment-URLs, TTL-Caches, HA-Views und Entfernung der Routen beim Unload |
 | `diagnostics.py` | Redaction von Token/Secret/`local_key`/Stream-URL/`m3u8`; nur Shadow-Codes, keine Werte |
 | `repairs.py` | Auth-, Region-, API- und IoT-Core-Autorisierungs-Issues |
 | `strings.json`, `translations/{de,en}.json` | UI-Texte und Repair-Beschreibungen |
@@ -130,7 +131,7 @@ Für die vier verifizierten DPS-Integer-Codes (`cur_power`, `cur_voltage`, `cur_
 | Timeout / 5xx / 429 | `ConfigEntryNotReady` beim Setup, `UpdateFailed` im Coordinator, Backoff |
 | Falsche Region → leere Liste | Repair-Issue „region_mismatch" |
 | Stream-Allokation fehlgeschlagen | `stream_source()` liefert `None`; Setup und andere Entitäten bleiben gesund |
-| Signierte URL abgelaufen / ungültige HLS-Daten | Der Worker meldet Unverfügbarkeit; die Kamera allokiert eine neue URL und ruft `stream.update_source()` auf (10 s Mindestabstand) |
+| Signierte URL abgelaufen / ungültige HLS-Daten | Der Proxy verwirft die Allokation; die Kamera ruft `stream.update_source()` mit derselben lokalen URL auf (10 s Mindestabstand), damit auch go2rtc die Quelle nicht neu registrieren muss |
 
 ## 8. Tests
 
@@ -139,10 +140,11 @@ Für die vier verifizierten DPS-Integer-Codes (`cur_power`, `cur_voltage`, `cur_
 - `tests/test_coordinator.py`: Geräte-Mapping, Auth→Reauth, Shadow-Refresh und -Retry, veraltete Geräte, Repair-Throttling, Command-1106, IoT-Core-Autorisierung.
 - `tests/test_init.py`: Setup/Fehlerpfade/Unload, `runtime_data`, Repairs-Cleanup, Forwarding der `camera`-Plattform.
 - `tests/test_entities.py`: DPS- und Shadow→Entity-Mapping, dynamische Shadow-Sensoren, stabile Light-/Cover-Codes, Kompatibilität der Switch-Codes.
-- `tests/test_camera.py`: frische HLS-URL, Offline-Fall, Option, Stream-Fehler, Erneuerung abgelaufener Quellen, Drosselung und Status-Callback.
+- `tests/test_camera.py`: stabile Proxy-URL, Offline-Fall, Option, Stream-Fehler, Erneuerung abgelaufener Quellen, Drosselung und Status-Callback.
+- `tests/test_stream_proxy.py`: URL-Rewrite ohne Geheimnisse, TTL-Cache, erzwungene Neuallokation, unbekannte Tokens und 404-Verhalten der Views.
 - `tests/test_diagnostics.py`: Redaction inkl. Stream-URL/`m3u8`, nur Shadow-Codes im Output.
 
-Ist: 152 Tests grün, `ruff check` und `ruff format --check` sauber (WSL, Python 3.13). Mindestversion ist Home Assistant 2025.8.0, weil `OptionsFlowWithReload` dort eingeführt wurde. `pytest.ini` setzt `asyncio_mode = auto`, `strict-markers` und `strict-config`; `validate.yml` nutzt Concurrency und Timeouts. Die Kamera-Tests benötigen zusätzlich `PyTurboJPEG`, weil HA `homeassistant.components.camera` importiert.
+Ist: 168 Tests grün, `ruff check` und `ruff format --check` sauber (Python 3.14). Mindestversion ist Home Assistant 2025.8.0, weil `OptionsFlowWithReload` dort eingeführt wurde. `pytest.ini` setzt `asyncio_mode = auto`, `strict-markers` und `strict-config`; `validate.yml` nutzt Concurrency und Timeouts. Die Kamera-Tests benötigen zusätzlich `PyTurboJPEG`, weil HA `homeassistant.components.camera` importiert.
 
 ## 9. Iterationsplan
 
@@ -153,5 +155,6 @@ Ist: 152 Tests grün, `ruff check` und `ruff format --check` sauber (WSL, Python
 5. **Iteration E:** README de/en, `hacs.json`, `pytest.ini`, `requirements_test.txt`, Changelog de/en, Architektur/Machbarkeit de/en. ✅ abgeschlossen
 6. **Iteration F:** Shadow-Client, `shadow.py`, `camera.py`, Optionen, Redaction, de/en-Doku gemäß Ausbauplan. ✅ abgeschlossen
 7. **Iteration G:** Live-Probe der neuen Client-Methoden (8 Geräte, 23 Shadow-Properties, HLS-Allokation) ohne Geheimnisausgabe. ✅ abgeschlossen
+8. **Iteration H:** lokaler HLS-Re-Proxy mit stabiler Quelle für HA/go2rtc, URL-/Key-Rewrite und pseudonymisierten Fehlerpfaden. ✅ abgeschlossen
 
 Nach jeder Iteration: Annahmen dokumentieren, Tests verifizieren, Architektur anpassen. Der Einsatz in der laufenden HA-Instanz ist für 0.2.4 verifiziert: HACS-Upgrade installiert, Config Entry `loaded`, 8 Geräte und 73/73 Entity-IDs unverändert (0 fehlend, 0 neu).

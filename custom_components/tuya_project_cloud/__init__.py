@@ -30,6 +30,7 @@ from .const import (
     DOMAIN as DOMAIN,
 )
 from .coordinator import TuyaProjectCloudCoordinator
+from .stream_proxy import TuyaStreamProxy
 from .utils import error_label
 
 _LOGGER = logging.getLogger(__name__)
@@ -72,9 +73,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
-    return await hass.config_entries.async_unload_platforms(
+    unloaded = await hass.config_entries.async_unload_platforms(
         entry, [Platform(platform) for platform in PLATFORMS]
     )
+    if unloaded:
+        proxy = hass.data.get(DOMAIN, {}).get("stream_proxy")
+        coordinator = getattr(entry, "runtime_data", None)
+        if isinstance(proxy, TuyaStreamProxy) and coordinator is not None:
+            proxy.unregister_coordinator(coordinator)
+    return unloaded
 
 
 async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:

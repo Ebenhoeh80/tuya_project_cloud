@@ -151,6 +151,25 @@ async def test_unload_entry_unloads_every_platform(hass, mock_config_entry) -> N
 
 
 @pytest.mark.asyncio
+async def test_unload_entry_forgets_camera_proxy_routes(
+    hass, mock_config_entry
+) -> None:
+    """A successful unload removes stale proxy routes for this entry."""
+    from custom_components.tuya_project_cloud import async_unload_entry
+    from custom_components.tuya_project_cloud.stream_proxy import TuyaStreamProxy
+
+    coordinator = MagicMock()
+    mock_config_entry.runtime_data = coordinator
+    proxy = MagicMock(spec=TuyaStreamProxy)
+    hass.data.setdefault("tuya_project_cloud", {})["stream_proxy"] = proxy
+    with patch.object(
+        hass.config_entries, "async_unload_platforms", AsyncMock(return_value=True)
+    ):
+        assert await async_unload_entry(hass, mock_config_entry) is True
+    proxy.unregister_coordinator.assert_called_once_with(coordinator)
+
+
+@pytest.mark.asyncio
 async def test_setup_errors_use_localized_keys(hass, mock_config_entry) -> None:
     """Setup failures never pass raw API text into the UI."""
     coordinator = MagicMock()

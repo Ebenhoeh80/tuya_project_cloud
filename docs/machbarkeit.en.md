@@ -78,7 +78,7 @@ The live tests showed that the `v1.0/devices` family works for linked devices. B
 4. **Entities**: Dynamic from `functions`/`status` + DPS codes. Platforms: switch, sensor, light, climate, cover, number, camera; additional shadow sensors from the IoT Core thing shadow. Entity descriptions with `device_class`, `native_unit_of_measurement`, `EntityCategory`.
 5. **Device/range**: `DeviceInfo` per Tuya device, `identifiers={(DOMAIN, device_id)}`; child devices where applicable.
 6. **Diagnostics/repairs**: Redaction of tokens, secrets, DPS values with personal data; repairs for auth errors, wrong region, missing API authorization.
-7. **Tests**: `pytest-homeassistant-custom-component`, 0.1.0 intermediate state: 36 tests green, 84 % overall coverage; 0.2.8 state: 152 tests green, `ruff check`/`format` clean. Config flow, coordinator, entity mapping, camera, redaction, error paths.
+7. **Tests**: `pytest-homeassistant-custom-component`, 0.1.0 intermediate state: 36 tests green, 84 % overall coverage; 0.3.0 state: 168 tests green, `ruff check`/`format` clean. Config flow, coordinator, entity mapping, camera, redaction, error paths.
 
 ## 8. Live proof (2026-11-27) – important rule fulfilled
 
@@ -118,7 +118,7 @@ The command was again **idempotent** (exact read value written back). This prove
 
 | Check | Result |
 |---|---|
-| Unit tests (WSL, Python 3.13, `pytest-homeassistant-custom-component`) | **152 passed** (0.2.8) |
+| Unit tests (Python 3.14, `pytest-homeassistant-custom-component`) | **168 passed** (0.3.0) |
 | `ruff check` / `ruff format --check` | **All checks passed** / clean |
 | Live smoke test of own client | **Success** (see above) |
 | Live shadow/stream probe of own client | **Success** (8 devices, 23 DPS, HLS allocation; see section 11) |
@@ -140,7 +140,7 @@ Both stream endpoints are listed in the official User Permission Package (as of 
 
 **Context:** The historic HA entity `camera.turspion` delivered 404 streams and put the whole integration into `setup_error` on 2026-10-06 (ADR 0009 in the SecondBrain wiki). The original cause remains unproven; the OpenAPI now really delivers the stream with the project token. A `camera` platform is therefore feasible and **implemented in 0.2.0** (see section 11).
 
-**Implementation:** `stream_source()` re-allocates on every start; the URL stays in-process only – never in logs, diagnostics, recorder or config entry. Since 0.2.8 a source reported as unusable by HA's stream worker is automatically replaced with a fresh signed URL via `Stream.update_source()`; HA would otherwise retry the same expired URL forever. WebRTC is not offered; go2rtc `tuya://` is optional for two-way audio.
+**Implementation:** Since 0.3.0 a local HLS reverse proxy sits in front: `stream_source()` returns a stable local `index.m3u8` with an opaque token while the proxy keeps and renews signed URLs, AES keys and segments in memory. If HA's stream worker reports an unusable source, the proxy drops the allocation and the camera calls `Stream.update_source()` with the same local URL; HA and go2rtc therefore no longer retry an expired Tuya URL. WebRTC is not offered; go2rtc `tuya://` is optional for two-way audio.
 
 Evidence in the SecondBrain wiki: `wiki/fragen/2026-11-27-tuya-tuer-spion-livebild.md` (not part of this repository).
 
@@ -163,9 +163,9 @@ STREAM allocated=True m3u8_in_url=True query_keys=1
 |---|---|
 | `GET /v2.0/cloud/thing/{id}/shadow/properties` via `TuyaOpenApi.async_get_thing_shadow()` | `23` properties, `16` mapped sensors |
 | `POST /v1.0/devices/{id}/stream/actions/allocate` via `TuyaOpenApi.async_allocate_stream()` | URL with `.m3u8` and signature query, memory only |
-| `camera` platform | HLS via `stream_source()`, no WebRTC |
+| `camera` platform | HLS via local reverse proxy and stable `stream_source()`, no WebRTC |
 | Redaction | Stream URL and `m3u8` masked in diagnostics, `_unrecorded_attributes = frozenset(MATCH_ALL)` |
 
-**Limits:** Scaling of `x_*` values follows community references (evcc/tuya-local), not the manufacturer `(unverified in detail)`. `d`/`t` from `x_metrics` and `x_charge_history` remain unassessed because their units are ambiguous. No write commands are sent to the wallbox. The installation in a running HA instance is verified for 0.2.8: HACS upgrade, config entry `loaded`, readback 85/85 entity IDs unchanged compared with 0.2.7 (0 missing, 0 new), 0 `unavailable`, 0 `unknown`, 0 repairs, no new stream errors after the restart. Source renewal itself is covered by regression tests against the HA stream API; active frontend playback was not triggered by this automation `(unverified)`.
+**Limits:** Scaling of `x_*` values follows community references (evcc/tuya-local), not the manufacturer `(unverified in detail)`. `d`/`t` from `x_metrics` and `x_charge_history` remain unassessed because their units are ambiguous. No write commands are sent to the wallbox. The installation in a running HA instance was last verified for 0.2.8: HACS upgrade, config entry `loaded`, readback 85/85 entity IDs unchanged compared with 0.2.7 (0 missing, 0 new), 0 `unavailable`, 0 `unknown`, 0 repairs, no new stream errors after the restart. The proxy additionally ran error-free in an end-to-end probe of both cameras for 180 seconds each with PyAV and ffmpeg/go2rtc compatibility; active playback in the HA frontend remains `(unverified)` in this automation.
 
 Evidence in the SecondBrain wiki: `wiki/fragen/2026-11-27-tuya-ev-charger-werte.md`, `wiki/projekte/tuya-project-cloud-ausbauplan.md`.

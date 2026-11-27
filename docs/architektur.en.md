@@ -23,7 +23,7 @@ Home Assistant custom integration that uses **exclusively the Tuya OpenAPI** wit
 | Diagnostics with redaction | Tokens, secrets and personal DPS values must never appear in diagnostics. |
 | IoT Core thing shadow for charger data | The classic `/status`, `/functions` and `/specifications` return no values for the charger; only the thing shadow is authorized and returns 23 DPS. |
 | Flat sensors instead of JSON attributes | `x_metrics` and `x_charger_info` are split in `shadow.py`, scaled and exposed as separate sensors with `device_class`/unit/`state_class`. |
-| Camera with a fresh HLS URL | `stream_source()` allocates a new URL per stream start; the URL stays in memory only and never in state/attributes/recorder. HA's `Camera.async_create_stream()` provides the lock. When the worker reports a failure, `Stream.update_source()` replaces the expired source (10 s minimum interval) because HA otherwise retries the same URL forever. |
+| Camera with a local HLS reverse proxy | `stream_source()` returns a stable local URL with an opaque token. The proxy keeps signed URLs, AES keys and segments in memory and never writes them to state/logs/diagnostics. When the worker reports a failure, it drops the allocation and calls `Stream.update_source()` with the same local URL (10 s minimum interval), so the go2rtc registry stays stable. |
 | `OptionsFlowWithReload` | Shadow and camera options require rebuilding platforms; HA reloads the entry after saving. |
 
 ## 3. Data flow
@@ -65,6 +65,7 @@ Config flow (access_id, access_secret, region)
 | `coordinator.py` | `DataUpdateCoordinator[dict[str, TuyaDevice]]`, device mapping, 60 s shadow refresh, stale devices→unavailable, errors→repairs/reauth |
 | `entity.py` | `TuyaProjectCloudEntity` (DPS) and `TuyaShadowEntity` (shadow): `device_info`, `unique_id`, `available` |
 | `switch.py`, `sensor.py`, `light.py`, `climate.py`, `cover.py`, `number.py`, `camera.py` | Dynamic entities from DPS and shadow codes or HLS stream |
+| `stream_proxy.py` | Local HLS reverse proxy: opaque tokens, rewrite of key/segment URLs, TTL caches, HA views and route cleanup on unload |
 | `diagnostics.py` | Redaction of token/secret/`local_key`/stream URL/`m3u8`; shadow codes only, no values |
 | `repairs.py` | Auth, region, API and IoT Core authorization issues |
 | `strings.json`, `translations/{de,en}.json` | UI texts and repair descriptions |
@@ -130,7 +131,7 @@ The four verified DPS integer codes (`cur_power`, `cur_voltage`, `cur_current`, 
 | Timeout / 5xx / 429 | `ConfigEntryNotReady` at setup, `UpdateFailed` in coordinator, backoff |
 | Wrong region → empty list | Repair issue "region_mismatch" |
 | Stream allocation failed | `stream_source()` returns `None`; setup and other entities stay healthy |
-| Signed URL expired / invalid HLS data | The worker reports unavailability; the camera allocates a new URL and calls `stream.update_source()` (10 s minimum interval) |
+| Signed URL expired / invalid HLS data | The proxy drops the allocation; the camera calls `stream.update_source()` with the same local URL (10 s minimum interval), so go2rtc does not need to re-register the source |
 
 ## 8. Tests
 
@@ -139,10 +140,11 @@ The four verified DPS integer codes (`cur_power`, `cur_voltage`, `cur_current`, 
 - `tests/test_coordinator.py`: device mapping, auth→reauth, shadow refresh and retry, stale devices, repair throttling, command 1106, IoT Core authorization.
 - `tests/test_init.py`: setup/error paths/unload, `runtime_data`, repair cleanup, forwarding of the `camera` platform.
 - `tests/test_entities.py`: DPS and shadow→entity mapping, dynamic shadow sensors, stable light/cover codes, switch code compatibility.
-- `tests/test_camera.py`: fresh HLS URL, offline case, option, stream error, renewal of expired sources, throttling and state callback.
+- `tests/test_camera.py`: stable proxy URL, offline case, option, stream error, renewal of expired sources, throttling and state callback.
+- `tests/test_stream_proxy.py`: URL rewrite without secrets, TTL cache, forced reallocation, unknown tokens and 404 behaviour of the views.
 - `tests/test_diagnostics.py`: redaction including stream URL/`m3u8`, shadow codes only in output.
 
-Current state: 152 tests green, `ruff check` and `ruff format --check` clean (WSL, Python 3.13). The minimum version is Home Assistant 2025.8.0 because `OptionsFlowWithReload` was introduced there. `pytest.ini` sets `asyncio_mode = auto`, `strict-markers` and `strict-config`; `validate.yml` uses concurrency and timeouts. Camera tests additionally need `PyTurboJPEG` because HA imports `homeassistant.components.camera`.
+Current state: 168 tests green, `ruff check` and `ruff format --check` clean (Python 3.14). The minimum version is Home Assistant 2025.8.0 because `OptionsFlowWithReload` was introduced there. `pytest.ini` sets `asyncio_mode = auto`, `strict-markers` and `strict-config`; `validate.yml` uses concurrency and timeouts. Camera tests additionally need `PyTurboJPEG` because HA imports `homeassistant.components.camera`.
 
 ## 9. Iteration plan
 
@@ -153,5 +155,6 @@ Current state: 152 tests green, `ruff check` and `ruff format --check` clean (WS
 5. **Iteration E:** README de/en, `hacs.json`, `pytest.ini`, `requirements_test.txt`, changelog de/en, architecture/feasibility de/en. ✅ complete
 6. **Iteration F:** Shadow client, `shadow.py`, `camera.py`, options, redaction, de/en docs per expansion plan. ✅ complete
 7. **Iteration G:** Live probe of the new client methods (8 devices, 23 shadow properties, HLS allocation) without secret output. ✅ complete
+8. **Iteration H:** Local HLS reverse proxy with a stable source for HA/go2rtc, URL/key rewrite and pseudonymized error paths. ✅ complete
 
 After each iteration: document assumptions, verify tests, adjust architecture. Deployment into the running HA instance is verified for 0.2.4: HACS upgrade installed, config entry `loaded`, 8 devices and 73/73 entity IDs unchanged (0 missing, 0 new).
