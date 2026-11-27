@@ -166,6 +166,6 @@ STREAM allocated=True m3u8_in_url=True query_keys=1
 | `camera`-Plattform | HLS über `stream_source()`, kein WebRTC |
 | Redaction | Stream-URL und `m3u8` in Diagnostics maskiert, `_unrecorded_attributes = frozenset(MATCH_ALL)` |
 
-**Grenzen:** Die Skalierung der `x_*`-Werte folgt Community-Referenzen (evcc/tuya-local), nicht dem Hersteller `(unbelegt im Detail)`. `d`/`t` aus `x_metrics` und `x_charge_history` bleiben wegen unklarer Einheit unbewertet. Es werden keine Schreibbefehle an die Wallbox gesendet. Die Installation von 0.2.3 in einer laufenden HA-Instanz ist verifiziert; 0.2.4 folgt nach Release mit Readback gegen die 73-Entitäten-Baseline.
+**Grenzen:** Die Skalierung der `x_*`-Werte folgt Community-Referenzen (evcc/tuya-local), nicht dem Hersteller `(unbelegt im Detail)`. `d`/`t` aus `x_metrics` und `x_charge_history` bleiben wegen unklarer Einheit unbewertet. Es werden keine Schreibbefehle an die Wallbox gesendet. Die Installation in einer laufenden HA-Instanz ist für 0.2.4 verifiziert: HACS-Upgrade, Config Entry `loaded`, Readback 73/73 Entity-IDs unverändert (0 fehlend, 0 neu). Aktive HLS-Wiedergabe und URL-Erneuerung nach Ablauf bleiben `(unbelegt)`.
 
 Nachweis im SecondBrain-Wiki: `wiki/fragen/2026-11-27-tuya-ev-charger-werte.md`, `wiki/projekte/tuya-project-cloud-ausbauplan.md`.

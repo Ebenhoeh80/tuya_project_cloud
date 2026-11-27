@@ -8,7 +8,7 @@ Eine Home-Assistant-Custom-Integration, die Geräte **ausschließlich über die 
 
 Machbarkeit am 27.11.2026 live bewiesen: Token, Geräteliste, Status, Funktionen und ein idempotenter Steuerbefehl (`POST /v1.0/devices/{id}/commands`) funktionieren mit dem reinen Projekt-Token. Ebenfalls live umgesetzt: Der `dé EV Charger` liefert über den IoT-Core-Shadow 23 DPS-Werte, aus denen 16 Sensoren entstehen; der Türspion liefert über `stream/actions/allocate` ein kurzlebiges HLS-Livebild. Siehe [Machbarkeitsbericht](docs/machbarkeit.md), Abschnitte 10 und 11.
 
-Stand 0.2.4: 81 Tests grün, Ruff sauber, HACS/Hassfest-Validierung zuletzt für 0.2.3 grün. Die Live-Installation mit 8 Geräten, 16 Lader-Sensoren und HLS-Kamera ist für 0.2.3 verifiziert; 0.2.4 wird nach dem Release gegen diese Baseline geprüft.
+Stand 0.2.4: 81 Tests grün, Ruff sauber, HACS/Hassfest/CI grün. Die HACS-Installation mit 8 Geräten, 16 Lader-Sensoren und HLS-Kamera ist auf 0.2.4 aktualisiert; Readback: Config Entry `loaded`, 73/73 Entity-IDs unverändert (0 fehlend, 0 neu), keine Tuya-Issues in System Health und Log.
 
 ## Voraussetzungen
 
@@ -64,7 +64,7 @@ Unbekannte Codes werden nicht geraten und nicht gesteuert. Für den Lader werden
 - Geräte müssen über „Link App Account" im Projekt sichtbar sein.
 - Tuya-Rate-Limits gelten pro Projekt (z. B. Commands ~4/s).
 - Diagnostics redaktieren Tokens, Secrets, `local_key`, UID, Standortdaten, Stream-URLs und `m3u8`; Geräte-IDs werden pseudonymisiert.
-- Livevideo läuft als `camera`-Plattform mit HLS; die signierte URL wird pro Streamstart neu allokiert, nur im Speicher gehalten und nie in State, Attributen, Logs, Recorder oder Diagnostics geschrieben. WebRTC wird nicht angeboten (`device not supports`).
+- Livevideo läuft als `camera`-Plattform mit HLS; die signierte URL wird pro Streamstart neu allokiert, nur im Speicher gehalten und nie in State, Attributen, Logs, Recorder oder Diagnostics geschrieben. WebRTC wird nicht angeboten (`device not supports`). Aktive Wiedergabe und URL-Erneuerung nach Ablauf bleiben `(unbelegt)`.
 - Die Skalierung der `x_*`-Werte stammt aus Community-Referenzen, nicht vom Hersteller; `(unbelegt)`.
 
 ## Entwicklung

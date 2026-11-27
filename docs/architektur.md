@@ -152,4 +152,4 @@ Ist: 81 Tests grün, `ruff check` und `ruff format --check` sauber (WSL, Python 
 6. **Iteration F:** Shadow-Client, `shadow.py`, `camera.py`, Optionen, Redaction, de/en-Doku gemäß Ausbauplan. ✅ abgeschlossen
 7. **Iteration G:** Live-Probe der neuen Client-Methoden (8 Geräte, 23 Shadow-Properties, HLS-Allokation) ohne Geheimnisausgabe. ✅ abgeschlossen
 
-Nach jeder Iteration: Annahmen dokumentieren, Tests verifizieren, Architektur anpassen. Der Einsatz in der laufenden HA-Instanz ist für 0.2.3 verifiziert; 0.2.4 wird nach dem Release gegen die 73-Entitäten-Baseline geprüft.
+Nach jeder Iteration: Annahmen dokumentieren, Tests verifizieren, Architektur anpassen. Der Einsatz in der laufenden HA-Instanz ist für 0.2.4 verifiziert: HACS-Upgrade installiert, Config Entry `loaded`, 8 Geräte und 73/73 Entity-IDs unverändert (0 fehlend, 0 neu).

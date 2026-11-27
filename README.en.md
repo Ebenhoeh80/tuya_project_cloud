@@ -8,7 +8,7 @@ A Home Assistant custom integration that controls devices **exclusively through 
 
 Feasibility proven live on 2026-11-27: token, device list, status, functions and an idempotent command (`POST /v1.0/devices/{id}/commands`) all work with the project token alone. Also implemented live: the `dé EV Charger` returns 23 DPS values via the IoT Core thing shadow, mapped to 16 sensors; the door viewer delivers a short-lived HLS live stream via `stream/actions/allocate`. See the [feasibility report](docs/machbarkeit.en.md), sections 10 and 11.
 
-State 0.2.4: 81 tests passing, Ruff clean, HACS/Hassfest validation last green for 0.2.3. The live installation with 8 devices, 16 charger sensors and HLS camera is verified for 0.2.3; 0.2.4 will be checked against that baseline after release.
+State 0.2.4: 81 tests passing, Ruff clean, HACS/Hassfest/CI green. The HACS installation with 8 devices, 16 charger sensors and the HLS camera was upgraded to 0.2.4; readback: config entry `loaded`, 73/73 entity IDs unchanged (0 missing, 0 new), no Tuya issues in system health or log.
 
 ## Prerequisites
 
@@ -64,7 +64,7 @@ Unknown codes are neither guessed nor controlled. For the charger only observed 
 - Devices must be visible in the project via "Link App Account".
 - Tuya rate limits apply per project (e.g. commands ~4/s).
 - Diagnostics redact tokens, secrets, `local_key`, UID, location data, stream URLs and `m3u8`; device IDs are pseudonymized.
-- Live view runs as a `camera` platform using HLS; the signed URL is allocated anew for each stream start, kept only in memory and never written to state, attributes, logs, recorder or diagnostics. WebRTC is not offered (`device not supports`).
+- Live view runs as a `camera` platform using HLS; the signed URL is allocated anew for each stream start, kept only in memory and never written to state, attributes, logs, recorder or diagnostics. WebRTC is not offered (`device not supports`). Active playback and URL renewal after expiry remain `(unverified)`.
 - Scaling of `x_*` values comes from community references, not from the manufacturer; `(unverified)`.
 
 ## Development
