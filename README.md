@@ -49,7 +49,7 @@ Die Integration erzeugt Entitäten dynamisch aus den DPS-Funktionen und Statusco
 | Plattform | Erkennung |
 |---|---|
 | Switch | Functions mit `switch`, `onoff`, `power`, `enable`, …; Boolean und bestehende Enum-/Integer-/String-Codes bleiben erhalten, Light-Codes sind ausgeschlossen |
-| Sensor | Lesbare Statuscodes wie `battery`, `temperature`, `humidity`, … |
+| Sensor | Lesbare Statuscodes wie `battery`, `temperature`, `humidity`, …; vier verifizierte Integer-Messcodes mit `scale` aus den Specifications und fest hinterlegten Einheiten/Klassen |
 | Number | Integer-Functions mit `min`/`max`/`step` |
 | Light | `switch_led`/`led_switch`, optional `bright_value` |
 | Climate | Kategorie `kt`/`ykq`/`hvac` oder `temp_set` |
@@ -57,7 +57,7 @@ Die Integration erzeugt Entitäten dynamisch aus den DPS-Funktionen und Statusco
 | Sensor (Shadow) | Geräte mit IoT-Core-`x_*`-Properties: Arbeitszustand, Spannungen, Ströme, Leistung, Energie, Ladestrom, Firmware; neue Sensoren erscheinen, sobald Daten eintreffen |
 | Camera | Kategorie `sp` oder Functions mit `stream`: HLS-Livebild |
 
-Unbekannte Codes werden nicht geraten und nicht gesteuert. DPS-Werte erscheinen als Rohwerte mit lesbarem Namen, weil die Skalierung je Gerät nicht verifiziert ist. Für den Lader werden nur live beobachtete und plausibel skalierte Shadow-Werte abgebildet; nicht eindeutige Zeiten und Zähler-Rohwerte bleiben außen vor. Es werden keine Schreibbefehle an die Wallbox gesendet.
+Unbekannte Codes werden nicht geraten und nicht gesteuert. Für die vier verifizierten Integer-Messcodes `cur_power`, `cur_voltage`, `cur_current` und `add_ele` übernimmt die Integration `scale` aus den Geräte-Specifications und verwendet fest hinterlegte, live bestätigte Einheiten sowie passende Device-/State-Classes – entsprechend der Original-`tuya`-Integration, aber ohne festen Skalierungsfaktor. Die Auslegung wird beim Setup festgehalten; Änderungen der Specifications wirken erst nach einem Reload. Alle übrigen DPS-Werte bleiben ausdrücklich Rohwerte. Für den Lader werden nur live beobachtete und plausibel skalierte Shadow-Werte abgebildet; nicht eindeutige Zeiten und Zähler-Rohwerte bleiben außen vor. Es werden keine Schreibbefehle an die Wallbox gesendet.
 
 ## Technische Grenzen
 
@@ -67,6 +67,7 @@ Unbekannte Codes werden nicht geraten und nicht gesteuert. DPS-Werte erscheinen 
 - Tuya-Rate-Limits gelten pro Projekt (z. B. Commands ~4/s).
 - Diagnostics redaktieren Tokens, Secrets, `local_key`, UID, Standortdaten, Stream-URLs und `m3u8`; Geräte-IDs werden pseudonymisiert.
 - Livevideo läuft als `camera`-Plattform mit HLS; die signierte URL wird pro Streamstart neu allokiert, nur im Speicher gehalten und nie in State, Attributen, Logs, Recorder oder Diagnostics geschrieben. WebRTC wird nicht angeboten (`device not supports`). Aktive Wiedergabe und URL-Erneuerung nach Ablauf bleiben `(unbelegt)`.
+- Die DPS-Skalierung folgt `Wert / 10**scale` mit dem `scale` aus den Specifications des Geräts; Einheiten und Klassen der vier verifizierten Codes sind fest hinterlegt. Ohne verlässliche Specification bleibt der Rohwert sichtbar.
 - Die Skalierung der `x_*`-Werte stammt aus Community-Referenzen, nicht vom Hersteller; `(unbelegt)`.
 
 ## Entwicklung

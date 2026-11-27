@@ -60,6 +60,7 @@ Config flow (access_id, access_secret, region)
 | `const.py` | Domain, configuration keys, regions→base URLs, DPS code constants, platforms |
 | `api.py` | `TuyaOpenApi`: signature, token, device list, status, functions, specifications, commands, thing shadow, stream allocation. Own error classes. |
 | `shadow.py` | `ShadowSensorDescription`, mapping of 16 charger sensors, JSON flattening and scaling |
+| `interpret.py` | Interpretation of the four verified DPS integer codes with `scale` from the specifications and fixed units/classes; captured at setup, all other codes stay raw |
 | `config_flow.py` | `user` step (ID, secret, region), duplicate check, `reauth`, options (interval, shadow, camera) with reload |
 | `coordinator.py` | `DataUpdateCoordinator[dict[str, TuyaDevice]]`, device mapping, 60 s shadow refresh, stale devices→unavailable, errors→repairs/reauth |
 | `entity.py` | `TuyaProjectCloudEntity` (DPS) and `TuyaShadowEntity` (shadow): `device_info`, `unique_id`, `available` |
@@ -108,7 +109,7 @@ class TuyaDevice:
 | Platform | Detection via DPS code / category |
 |---|---|
 | switch | Functions with `switch`/`onoff`/`power`/`enable` in the code; Boolean and existing Enum/Integer/String codes are retained for compatibility, light codes are excluded |
-| sensor | Status codes without function (read-only), e.g. `battery`, `temperature`, `humidity`, `motion_record` |
+| sensor | Status codes without function (read-only), e.g. `battery`, `temperature`, `humidity`, `motion_record`; verified integer measurement codes with scaling and classes from the specifications |
 | light | `switch_led`, `bright_value`, `colour_data`, `temp_value` |
 | climate | `temp_set`, `mode`, `fan_speed`, `windspeed`, category `kt` |
 | cover | `control`, `percent_control`, `position`, category `cl`/`curtain` |
@@ -116,7 +117,7 @@ class TuyaDevice:
 | sensor (shadow) | Devices with `x_work_state`, `x_metrics`, `x_charger_info` etc.; 16 mapped sensors with a `shadow_` prefix in the unique ID, added dynamically when data arrives |
 | camera | Category `sp` or functions containing `stream`; HLS via `stream_source()` |
 
-Scaling `(unverified in detail)`: voltage/current/power/energy from `x_metrics` ×0.1, `x_charger_info.e` ×0.1; durations and raw counters with ambiguous units are omitted. Readable status codes with matching hints (`battery`, `temperature`, `humidity`, …) are created as `sensor` with `EntityCategory.DIAGNOSTIC`. Completely unknown codes are neither guessed nor controlled.
+The four verified DPS integer codes (`cur_power`, `cur_voltage`, `cur_current`, `add_ele`) use `value / 10**scale` with `scale` from the device specifications; units and device/state classes are fixed and match the original `tuya` integration. The interpretation is captured at setup so metadata and values cannot drift; later specification changes require a reload. Without a reliable specification the raw value is kept. The `x_*` shadow scaling (voltage/current/power/energy from `x_metrics` ×0.1, `x_charger_info.e` ×0.1) still comes from community references and is `(unverified in detail)`; durations and raw counters with ambiguous units are omitted. Readable status codes with matching hints (`battery`, `temperature`, `humidity`, …) are created as `sensor` with `EntityCategory.DIAGNOSTIC`. Completely unknown codes are neither guessed nor controlled.
 
 ## 7. Error and reauth strategy
 

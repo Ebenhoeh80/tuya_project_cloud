@@ -1,5 +1,27 @@
 # Changelog / Änderungen
 
+## [0.2.7] - 2026-11-27
+
+### Deutsch
+
+- Die vier verifizierten DPS-Integer-Codes werden anhand der Geräte-Specifications ausgelegt: `Wert / 10**scale` mit dem `scale` des Geräts und fest hinterlegten, live bestätigten Einheiten sowie passenden Device-/State-Classes. Damit gleicht die Anzeige der Original-`tuya`-Integration, ohne einen geratenen festen Faktor.
+- Für das Balkonkraftwerk erscheinen `cur_power` in W (`power`/`measurement`), `cur_voltage` in V (`voltage`/`measurement`), `cur_current` in mA mit empfohlener Anzeige in A (`current`/`measurement`) und `add_ele` in kWh (`energy`/`total_increasing`). Diese Sensoren tragen lesbare Namen ohne „(Rohwert)" und behalten ihre bisherigen Entity-IDs.
+- Unbekannte Codes, Kalibrierungswerte wie `power_coe`, Temperatur-, Feuchte- und Akku-Codes sowie fehlende oder ungültige Specifications bleiben unverändert roh. Die Auslegung wird beim Setup eingefroren; später eintreffende oder geänderte Specifications wirken erst nach einem Reload. Die Befehlspfade für Switch, Number, Light, Climate und Cover wurden nicht angefasst; die Wallbox bleibt read-only.
+- Alle bestehenden Unique-IDs, Entity-IDs und Automationen bleiben stabil. Neu hinzu kommt `add_ele`, sofern das Gerät den Code meldet – ohne gültige Specification als Rohwert, mit gültiger Specification als Messsensor. `cur_power`, `cur_voltage` und `cur_current` behalten ihre Entity-IDs und erhalten nur bei gültiger Specification Einheiten und Classes.
+- Diagnostics geben weiterhin keine Specifications-Metadaten aus; Redaction, Pseudonymisierung und die DE/EN-Übersetzungen wurden entsprechend erweitert und geprüft.
+- Qualität: 142 Tests grün, Ruff und Formatierung sauber. Unabhängige Code-Freigabe nach drei Prüfrunden ohne verbleibende Blocker.
+
+### English
+
+- The four verified integer DPS codes are now interpreted from the device specifications: `value / 10**scale` with the device's `scale` and fixed, live-confirmed units plus matching device/state classes. The display matches the original `tuya` integration without a guessed fixed factor.
+- For the balcony power meter, `cur_power` appears in W (`power`/`measurement`), `cur_voltage` in V (`voltage`/`measurement`), `cur_current` in mA with a suggested display unit of A (`current`/`measurement`) and `add_ele` in kWh (`energy`/`total_increasing`). These sensors use readable names without "(raw value)" and keep their existing entity IDs.
+- Unknown codes, calibration values such as `power_coe`, temperature, humidity and battery codes, and missing or invalid specifications remain raw. The interpretation is captured at setup; specifications arriving or changing later take effect only after a reload. Command paths for switch, number, light, climate and cover were untouched; the wallbox stays read-only.
+- All existing unique IDs, entity IDs and automations remain stable. `add_ele` is added when the device reports the code – as a raw value without a valid specification and as a measurement sensor with one. `cur_power`, `cur_voltage` and `cur_current` keep their entity IDs and gain units/classes only with a valid specification.
+- Diagnostics still omit specification metadata; redaction, pseudonymization and the DE/EN translations were extended and verified accordingly.
+- Quality: 142 tests passing, Ruff and formatting clean. Independent code approval after three review rounds with no remaining blockers.
+
+---
+
 ## [0.2.6] - 2026-11-27
 
 ### Deutsch

@@ -49,7 +49,7 @@ Entities are generated dynamically from each device's DPS functions and status c
 | Platform | Detection |
 |---|---|
 | Switch | Functions with `switch`, `onoff`, `power`, `enable`, …; Boolean and existing Enum/Integer/String codes are retained, light codes are excluded |
-| Sensor | Read-only status codes such as `battery`, `temperature`, `humidity`, … |
+| Sensor | Read-only status codes such as `battery`, `temperature`, `humidity`, …; four verified integer measurement codes with `scale` from the specifications and fixed units/classes |
 | Number | Integer functions with `min`/`max`/`step` |
 | Light | `switch_led`/`led_switch`, optional `bright_value` |
 | Climate | Category `kt`/`ykq`/`hvac` or `temp_set` |
@@ -57,7 +57,7 @@ Entities are generated dynamically from each device's DPS functions and status c
 | Sensor (shadow) | Devices with IoT Core `x_*` properties: work state, voltages, currents, power, energy, charge current, firmware; new sensors appear as soon as data arrives |
 | Camera | Category `sp` or functions containing `stream`: HLS live view |
 
-Unknown codes are neither guessed nor controlled. DPS values appear as raw values with readable names because scaling is not verified per device. For the charger only observed shadow values with plausible scaling are mapped; ambiguous durations and raw counters are omitted. No write commands are sent to the wallbox.
+Unknown codes are neither guessed nor controlled. For the four verified integer measurement codes `cur_power`, `cur_voltage`, `cur_current` and `add_ele`, the integration takes `scale` from the device specifications and uses fixed, live-confirmed units plus matching device/state classes – like the original `tuya` integration, but without a fixed scaling factor. The interpretation is captured at setup; specification changes take effect only after a reload. All other DPS values remain explicitly raw. For the charger only observed shadow values with plausible scaling are mapped; ambiguous durations and raw counters are omitted. No write commands are sent to the wallbox.
 
 ## Technical limits
 
@@ -67,6 +67,7 @@ Unknown codes are neither guessed nor controlled. DPS values appear as raw value
 - Tuya rate limits apply per project (e.g. commands ~4/s).
 - Diagnostics redact tokens, secrets, `local_key`, UID, location data, stream URLs and `m3u8`; device IDs are pseudonymized.
 - Live view runs as a `camera` platform using HLS; the signed URL is allocated anew for each stream start, kept only in memory and never written to state, attributes, logs, recorder or diagnostics. WebRTC is not offered (`device not supports`). Active playback and URL renewal after expiry remain `(unverified)`.
+- DPS scaling follows `value / 10**scale` with `scale` from the device's specifications; units and classes of the four verified codes are fixed. Without a reliable specification the raw value stays visible.
 - Scaling of `x_*` values comes from community references, not from the manufacturer; `(unverified)`.
 
 ## Development

@@ -123,7 +123,7 @@ def _shadow_device() -> TuyaDevice:
     ("setup", "expected_count"),
     [
         (switch_setup, 1),
-        (sensor_setup, 3),
+        (sensor_setup, 4),
         (number_setup, 1),
         (light_setup, 1),
         (climate_setup, 1),

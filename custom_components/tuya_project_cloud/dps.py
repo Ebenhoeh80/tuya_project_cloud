@@ -1,9 +1,8 @@
 """User-facing metadata for Tuya DPS codes.
 
 The codes come from the cloud API and are internal identifiers. They are mapped
-to readable, localized entity names here. Scaling can differ per device and is
-not verified for this project, so no units or state classes are guessed: every
-value is explicitly presented as a raw value.
+to readable, localized entity names here. Verified integer measurement codes
+are additionally interpreted in :mod:`interpret.py`; all other values stay raw.
 """
 
 from __future__ import annotations
@@ -33,6 +32,7 @@ SENSOR_DESCRIPTIONS: dict[str, SensorEntityDescription] = {
         ("temp_current", "dps_temperature"),
         ("cur_power", "dps_power"),
         ("power_coe", "dps_power_calibration"),
+        ("add_ele", "dps_energy"),
         ("energy", "dps_energy"),
         ("voltage", "dps_voltage"),
         ("cur_voltage", "dps_voltage"),

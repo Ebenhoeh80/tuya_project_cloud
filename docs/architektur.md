@@ -60,6 +60,7 @@ Config Flow (access_id, access_secret, region)
 | `const.py` | Domain, Konfigurationsschlüssel, Regions→Base-URL, DPS-Code-Konstanten, Plattformen |
 | `api.py` | `TuyaOpenApi`: Signatur, Token, Geräteliste, Status, Functions, Specifications, Commands, Thing-Shadow, Stream-Allokation. Eigene Fehlerklassen. |
 | `shadow.py` | `ShadowSensorDescription`, Mapping der 16 Lader-Sensoren, JSON-Zerlegung und Skalierung |
+| `interpret.py` | Auslegung der vier verifizierten DPS-Integer-Codes mit `scale` aus den Specifications und fest hinterlegten Einheiten/Classes; beim Setup eingefroren, alle anderen Codes bleiben roh |
 | `config_flow.py` | `user`-Step (ID, Secret, Region), Duplikatprüfung, `reauth`, Options (Intervall, Shadow, Kamera) mit Reload |
 | `coordinator.py` | `DataUpdateCoordinator[dict[str, TuyaDevice]]`, Geräte-Mapping, Shadow-Refresh alle 60 s, veraltete Geräte→unavailable, Fehler→Repairs/Reauth |
 | `entity.py` | `TuyaProjectCloudEntity` (DPS) und `TuyaShadowEntity` (Shadow): `device_info`, `unique_id`, `available` |
@@ -108,7 +109,7 @@ class TuyaDevice:
 | Plattform | Erkennung über DPS-Code / Kategorie |
 |---|---|
 | switch | Functions mit `switch`/`onoff`/`power`/`enable` im Code; Boolean und bestehende Enum-/Integer-/String-Codes bleiben aus Kompatibilitätsgründen erhalten, Light-Codes werden ausgeschlossen |
-| sensor | Status-Codes ohne Function (Read-only), z. B. `battery`, `temperature`, `humidity`, `motion_record` |
+| sensor | Status-Codes ohne Function (Read-only), z. B. `battery`, `temperature`, `humidity`, `motion_record`; verifizierte Integer-Messcodes mit Skalierung und Klassen aus den Specifications |
 | light | `switch_led`, `bright_value`, `colour_data`, `temp_value` |
 | climate | `temp_set`, `mode`, `fan_speed`, `windspeed`, Kategorie `kt` |
 | cover | `control`, `percent_control`, `position`, Kategorie `cl`/`curtain` |
@@ -116,7 +117,7 @@ class TuyaDevice:
 | sensor (Shadow) | Geräte mit `x_work_state`, `x_metrics`, `x_charger_info` o. ä.; 16 gemappte Sensoren mit `shadow_`-Präfix in der Unique-ID, die beim Eintreffen von Daten dynamisch ergänzt werden |
 | camera | Kategorie `sp` oder Functions mit `stream`; HLS über `stream_source()` |
 
-Skalierung `(unbelegt im Detail)`: Spannung/Strom/Leistung/Energie aus `x_metrics` ×0,1, `x_charger_info.e` ×0,1; Zeiten und Rohzähler mit unklarer Einheit werden nicht abgebildet. Lesbare Status-Codes mit passenden Hinweisen (`battery`, `temperature`, `humidity`, …) werden als `sensor` mit `EntityCategory.DIAGNOSTIC` erzeugt. Völlig unbekannte Codes werden nicht geraten und nicht gesteuert.
+Für die vier verifizierten DPS-Integer-Codes (`cur_power`, `cur_voltage`, `cur_current`, `add_ele`) wird `Wert / 10**scale` mit dem `scale` aus den Geräte-Specifications angewendet; Einheiten und Device-/State-Classes sind fest hinterlegt und entsprechen der Original-`tuya`-Integration. Die Auslegung wird beim Setup eingefroren, damit Metadaten und Wert nicht auseinanderlaufen; ein Reload ist nötig, wenn Specifications später eintreffen. Ohne verlässliche Specification bleibt der Rohwert erhalten. Die `x_*`-Shadow-Skalierung (Spannung/Strom/Leistung/Energie aus `x_metrics` ×0,1, `x_charger_info.e` ×0,1) stammt weiterhin aus Community-Referenzen und ist `(unbelegt im Detail)`; Zeiten und Rohzähler mit unklarer Einheit werden nicht abgebildet. Lesbare Status-Codes mit passenden Hinweisen (`battery`, `temperature`, `humidity`, …) werden als `sensor` mit `EntityCategory.DIAGNOSTIC` erzeugt. Völlig unbekannte Codes werden nicht geraten und nicht gesteuert.
 
 ## 7. Fehler- und Reauth-Strategie
 

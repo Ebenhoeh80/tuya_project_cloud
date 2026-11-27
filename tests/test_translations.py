@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from custom_components.tuya_project_cloud import dps
+from custom_components.tuya_project_cloud.interpret import INTERPRETATIONS
 from custom_components.tuya_project_cloud.shadow import CHARGER_SHADOW_SENSORS
 
 COMPONENT = (
@@ -70,6 +71,10 @@ def test_every_entity_key_is_translated() -> None:
     used.update(
         ("sensor", description.translation_key)
         for description in dps.SENSOR_DESCRIPTIONS.values()
+    )
+    used.update(
+        ("sensor", interpretation.translation_key)
+        for interpretation in INTERPRETATIONS.values()
     )
     used.update(
         ("switch", description.translation_key)

@@ -6,7 +6,11 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from custom_components.tuya_project_cloud.api import TuyaDevice, TuyaShadowProperty
+from custom_components.tuya_project_cloud.api import (
+    TuyaDevice,
+    TuyaFunction,
+    TuyaShadowProperty,
+)
 from custom_components.tuya_project_cloud.const import DOMAIN
 from custom_components.tuya_project_cloud.diagnostics import (
     _redact,
@@ -109,3 +113,42 @@ async def test_device_diagnostics_unknown_identifier_is_safe(
     assert result["device_id"] is None
     assert result["status"] == {}
     assert result["functions"] == {}
+
+
+@pytest.mark.asyncio
+async def test_device_diagnostics_omit_specification_metadata(
+    hass, mock_config_entry
+) -> None:
+    """Specification details used for scaling never enter diagnostics."""
+    coordinator = MagicMock()
+    coordinator.data = {
+        "dev1": TuyaDevice(
+            id="dev1",
+            name="Meter",
+            category="cz",
+            product_id="p1",
+            online=True,
+            status={"cur_power": 37},
+            specifications={
+                "cur_power": TuyaFunction(
+                    "cur_power",
+                    "Integer",
+                    {
+                        "scale": 1,
+                        "min": 987654,
+                        "max": 987655,
+                        "unit": "MARKER_UNIT_XYZ",
+                    },
+                )
+            },
+        )
+    }
+    mock_config_entry.runtime_data = coordinator
+    device = MagicMock()
+    device.identifiers = {(DOMAIN, "dev1")}
+    result = await async_get_device_diagnostics(hass, mock_config_entry, device)
+    text = str(result)
+    assert result["status"] == {"cur_power": 37}
+    assert "MARKER_UNIT_XYZ" not in text
+    assert "987654" not in text
+    assert "987655" not in text

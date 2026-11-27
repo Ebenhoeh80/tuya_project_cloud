@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Any
 
 from homeassistant.components.sensor import SensorEntity, SensorEntityDescription
@@ -9,8 +10,14 @@ from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
+from .api import TuyaFunction
 from .dps import SENSOR_DESCRIPTIONS
 from .entity import TuyaProjectCloudEntity, TuyaShadowEntity
+from .interpret import (
+    DpsSensorInterpretation,
+    interpretation_for,
+    interpreted_value,
+)
 from .shadow import CHARGER_SHADOW_SENSORS, has_shadow_sensors
 
 PARALLEL_UPDATES = 0
@@ -41,7 +48,10 @@ async def async_setup_entry(
         for code in device.status:
             if code in device.functions:
                 continue
-            if not any(hint in code.lower() for hint in SENSOR_HINTS):
+            definition = device.specifications.get(code)
+            if code not in SENSOR_DESCRIPTIONS and not any(
+                hint in code.lower() for hint in SENSOR_HINTS
+            ):
                 continue
             description = SENSOR_DESCRIPTIONS.get(code) or SensorEntityDescription(
                 key=code,
@@ -49,7 +59,27 @@ async def async_setup_entry(
                 translation_placeholders={"code": code},
                 entity_category=EntityCategory.DIAGNOSTIC,
             )
-            entities.append(TuyaSensor(coordinator, device, description, code))
+            interpretation = interpretation_for(code, definition)
+            if interpretation is not None:
+                description = replace(
+                    description,
+                    translation_key=interpretation.translation_key,
+                    device_class=interpretation.device_class,
+                    native_unit_of_measurement=interpretation.native_unit,
+                    suggested_unit_of_measurement=interpretation.suggested_unit,
+                    state_class=interpretation.state_class,
+                    suggested_display_precision=interpretation.precision,
+                )
+            entities.append(
+                TuyaSensor(
+                    coordinator,
+                    device,
+                    description,
+                    code,
+                    definition=definition,
+                    interpretation=interpretation,
+                )
+            )
     known_shadow_ids: set[str] = set()
 
     def _new_shadow_sensors() -> list[TuyaShadowSensor]:
@@ -83,10 +113,25 @@ async def async_setup_entry(
 class TuyaSensor(TuyaProjectCloudEntity, SensorEntity):
     """A sensor backed by a read-only DPS code."""
 
+    def __init__(
+        self,
+        coordinator: Any,
+        device: Any,
+        description: SensorEntityDescription,
+        dps_code: str,
+        *,
+        definition: TuyaFunction | None = None,
+        interpretation: DpsSensorInterpretation | None = None,
+    ) -> None:
+        """Initialize a DPS sensor with its setup-time interpretation."""
+        super().__init__(coordinator, device, description, dps_code)
+        self._definition = definition
+        self._interpretation = interpretation
+
     @property
     def native_value(self) -> Any:
-        """Return the current sensor value."""
-        return self.dps_value
+        """Return the value using the interpretation chosen at setup."""
+        return interpreted_value(self.dps_value, self._definition, self._interpretation)
 
 
 class TuyaShadowSensor(TuyaShadowEntity, SensorEntity):
