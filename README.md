@@ -8,7 +8,7 @@ Eine Home-Assistant-Custom-Integration, die Geräte **ausschließlich über die 
 
 Machbarkeit am 27.11.2026 live bewiesen: Token, Geräteliste, Status, Funktionen und ein idempotenter Steuerbefehl (`POST /v1.0/devices/{id}/commands`) funktionieren mit dem reinen Projekt-Token. Ebenfalls live umgesetzt: Der `dé EV Charger` liefert über den IoT-Core-Shadow 23 DPS-Werte, aus denen 16 Sensoren entstehen; der Türspion liefert über `stream/actions/allocate` ein kurzlebiges HLS-Livebild. Siehe [Machbarkeitsbericht](docs/machbarkeit.md), Abschnitte 10 und 11.
 
-Stand 0.2.0: 47 Tests grün, Ruff sauber, Live-Probe mit 8 Geräten erfolgreich. Noch keine Änderung an einer laufenden Home-Assistant-Instanz vorgenommen.
+Stand 0.2.1: 47 Tests grün, Ruff sauber, HACS/Hassfest-Validierung grün, Live-Probe mit 8 Geräten erfolgreich.
 
 ## Voraussetzungen
 

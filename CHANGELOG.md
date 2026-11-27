@@ -1,5 +1,21 @@
 # Changelog / Änderungen
 
+## [0.2.1] - 2026-11-27
+
+### Deutsch
+
+- CI: Der Autostart der Reauth-Flows wird im Auth-Fehler-Test während der Teardown-Phase unterdrückt; damit laufen alle 47 Tests auch auf dem GitHub-Runner sauber.
+- HACS-Metadaten: Repository-Topics und eigene Brand-Assets (`icon.png`, `icon@2x.png`) ergänzt; die HACS-Validierung ist damit vollständig grün.
+- Dokumentation und Version auf 0.2.1 nachgezogen.
+
+### English
+
+- CI: The automatic reauth flow is suppressed during teardown of the auth-failure test, so all 47 tests also pass on the GitHub runner.
+- HACS metadata: repository topics and local brand assets (`icon.png`, `icon@2x.png`) added; HACS validation is now fully green.
+- Documentation and version updated to 0.2.1.
+
+---
+
 ## [0.2.0] - 2026-11-27
 
 ### Deutsch

@@ -13,6 +13,17 @@ from custom_components.tuya_project_cloud.api import (
 )
 
 
+@pytest.fixture
+def suppress_reauth(hass):
+    """Keep the automatic reauth flow from outliving an auth-failure test."""
+    with patch.object(
+        hass.config_entries.flow,
+        "async_init",
+        AsyncMock(return_value={"type": "abort", "reason": "already_configured"}),
+    ):
+        yield
+
+
 @pytest.mark.asyncio
 async def test_setup_entry_success(hass, mock_config_entry) -> None:
     """A successful setup stores the coordinator in runtime_data."""
@@ -39,7 +50,7 @@ async def test_setup_entry_success(hass, mock_config_entry) -> None:
 
 
 @pytest.mark.asyncio
-async def test_setup_auth_failed(hass, mock_config_entry) -> None:
+async def test_setup_auth_failed(hass, mock_config_entry, suppress_reauth) -> None:
     """Auth errors become ConfigEntryAuthFailed."""
     mock_config_entry.add_to_hass(hass)
     coordinator = MagicMock()
