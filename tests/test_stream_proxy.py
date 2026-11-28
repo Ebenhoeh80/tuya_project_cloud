@@ -10,6 +10,13 @@ import pytest
 from aiohttp import web
 
 from custom_components.tuya_project_cloud.api import TuyaApiError, TuyaDevice
+from custom_components.tuya_project_cloud.hls_ts import (
+    _write_pcr,
+    _write_timestamp,
+    decrypt,
+    encrypt,
+    timestamps,
+)
 from custom_components.tuya_project_cloud.stream_proxy import (
     TuyaKeyView,
     TuyaPlaylistView,
@@ -481,7 +488,7 @@ async def test_allocation_change_bridges_old_and_new_segments() -> None:
     assert second.index("#EXT-X-DISCONTINUITY") < second.index(new_paths[0])
     assert first_paths[0] not in _segment_paths(third)
     assert "#EXT-X-DISCONTINUITY-SEQUENCE:1" in (third or "")
-    assert "#EXT-X-DISCONTINUITY" not in (third or "").splitlines()
+    assert "#EXT-X-DISCONTINUITY" in (third or "").splitlines()
     assert allocate.await_count == 2
 
 
@@ -600,8 +607,12 @@ async def test_empty_renewed_playlist_keeps_discontinuity_pending() -> None:
         middle = await proxy.playlist(token)
         third = await proxy.playlist(token)
     assert middle is not None and third is not None
-    assert "#EXT-X-DISCONTINUITY" not in middle.splitlines()
-    assert "#EXT-X-DISCONTINUITY" in third.splitlines()
+
+    def tags(playlist: str) -> int:
+        return sum(line == "#EXT-X-DISCONTINUITY" for line in playlist.splitlines())
+
+    assert tags(middle) == 1
+    assert tags(third) == 2
     assert "#EXT-X-DISCONTINUITY-SEQUENCE:0" in third
     assert _segment_paths(first)[0] in _segment_paths(third)
 
@@ -638,3 +649,97 @@ async def test_key_uri_stays_stable_across_polls() -> None:
     assert first is not None and second is not None
     key = re.compile(r'URI="([^"]+)"')
     assert key.search(first).group(1) == key.search(second).group(1)
+
+
+def _ts_packet(pcr: int, dts: int | None) -> bytes:
+    """Return one TS packet with PCR and an optional PES DTS."""
+    packet = bytearray(188)
+    packet[0] = 0x47
+    packet[1] = 0x40 if dts is not None else 0x00
+    packet[3] = 0x30
+    packet[4] = 7
+    packet[5] = 0x10
+    _write_pcr(packet, 6, pcr)
+    if dts is not None:
+        packet[12:15] = b"\x00\x00\x01"
+        packet[15] = 0xE0
+        packet[19] = 0xC0
+        packet[20] = 10
+        _write_timestamp(packet, 21, dts)
+        _write_timestamp(packet, 26, dts)
+    return bytes(packet)
+
+
+def _encrypted_segment(start: float) -> bytes:
+    """Build an AES-128 segment whose timestamps restart at ``start``."""
+    base = int(start * 90000)
+    clear = b"".join(
+        _ts_packet(base + index * 3600, base if index == 0 else None)
+        for index in range(4)
+    )
+    encrypted = encrypt(clear, bytes(range(16)), bytes(range(16, 32)))
+    assert encrypted is not None
+    return encrypted
+
+
+@pytest.mark.asyncio
+async def test_encrypted_segments_get_continuous_timestamps_across_allocations() -> (
+    None
+):
+    """A fresh Tuya allocation must not make HA see a 30 s DTS jump."""
+    proxy, token, _ = _proxy()
+    rebase_playlist = PLAYLIST.replace(
+        "IV=0x1234", "IV=0x101112131415161718191a1b1c1d1e1f"
+    )
+    first_playlist = rebase_playlist.replace("segment1.ts", "old.ts").replace(
+        "segment2.ts?token=SEGTOKEN2", ""
+    )
+    second_playlist = rebase_playlist.replace("segment1.ts", "new.ts").replace(
+        "segment2.ts?token=SEGTOKEN2", ""
+    )
+    first_segment = _encrypted_segment(31.5)
+    second_segment = _encrypted_segment(1.5)
+    polls = 0
+
+    async def fake_fetch(url: str) -> tuple[bytes, dict[str, str]] | None:
+        nonlocal polls
+        if url == UPSTREAM:
+            polls += 1
+            return (first_playlist if polls == 1 else second_playlist).encode(), {}
+        if "key.bin" in url:
+            return bytes(range(16)), {}
+        if "old.ts" in url:
+            return first_segment, {}
+        if "new.ts" in url:
+            return second_segment, {}
+        return None
+
+    with (
+        patch.object(proxy, "_fetch", side_effect=fake_fetch),
+        patch(
+            "custom_components.tuya_project_cloud.stream_proxy.get_url",
+            return_value="http://ha.invalid:8123",
+        ),
+    ):
+        first_playlist_text = await proxy.playlist(token)
+        proxy.invalidate(token)
+        second_playlist_text = await proxy.playlist(token)
+        assert first_playlist_text is not None and second_playlist_text is not None
+        first_resource = _segment_paths(first_playlist_text)[0].rsplit("/", 1)[-1]
+        second_resource = _segment_paths(second_playlist_text)[-1].rsplit("/", 1)[-1]
+        first_body = await proxy.resource(
+            token, "segment", first_resource.removesuffix(".ts")
+        )
+        second_body = await proxy.resource(
+            token, "segment", second_resource.removesuffix(".ts")
+        )
+
+    assert first_body is not None and second_body is not None
+    first_clear = decrypt(first_body[0], bytes(range(16)), bytes(range(16, 32)))
+    second_clear = decrypt(second_body[0], bytes(range(16)), bytes(range(16, 32)))
+    assert first_clear is not None and second_clear is not None
+    _, first_last = timestamps(first_clear)
+    second_first, _ = timestamps(second_clear)
+    assert first_last is not None and second_first is not None
+    assert second_first > first_last
+    assert second_first - first_last < 90000

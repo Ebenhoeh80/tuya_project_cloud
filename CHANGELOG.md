@@ -1,5 +1,21 @@
 # Changelog / Änderungen
 
+## [0.4.3] - 2026-11-28
+
+### Deutsch
+
+- Der lokale HLS-Re-Proxy des Türspions rebasiet die Zeitstempel bei jeder frischen Tuya-Allokation. Ein kontrollierter FFmpeg-7-Test zeigte, dass weder `EXT-X-DISCONTINUITY` noch `EXT-X-PROGRAM-DATE-TIME` den DTS-Reset von etwa 30 s korrigieren; Home Assists Stream-Validator meldete daraufhin `Timestamp discontinuity detected`. Der Proxy entschlüsselt jedes AES-128-Segment im Speicher mit dem ohnehin vorhandenen Key/IV, verschiebt PCR, PTS und DTS auf die laufende Zeitleiste und verschlüsselt das Segment mit demselben Key wieder. Key, IV und signierte URLs bleiben nur im Speicher und erscheinen nicht in Logs, State oder Diagnostics.
+- Ein 90,7-s-PyAV-Soak mit der HA-exakten DTS-Validierung gegen die live Tuya-Quelle ergab 2842 Frames/Pakete, 3 Allokationen, 0 Sprünge, 0 Fehler und eine leere Stderr. Damit ist der Dauerstream des Türspions über Allokationswechsel hinweg belegt; der direkte RTSP-Pfad der Pan/Tilt-Kamera, die Low-Power-Erkennung, die Fallback-Kette und der Stillbildpfad über `ffmpeg` bleiben unverändert.
+- Qualität: 197 Tests grün (neu: TS-Zeitstempel, 33-Bit-Wraparound, AES-Roundtrip und Allokationswechsel), `ruff check`, `ruff format --check` und `git diff --check` sauber. Entity-IDs, Unique-IDs, Automationen und Schreibpfade bleiben unberührt; die Wallbox bleibt read-only. Es wurde keine neue Python-Abhängigkeit hinzugefügt; `cryptography` ist bereits Teil von Home Assistant.
+
+### English
+
+- The door viewer's local HLS reverse proxy now rebases timestamps on every fresh Tuya allocation. A controlled FFmpeg 7 test showed that neither `EXT-X-DISCONTINUITY` nor `EXT-X-PROGRAM-DATE-TIME` corrects the roughly 30 s DTS reset; Home Assistant's stream validator reported `Timestamp discontinuity detected`. The proxy decrypts each AES-128 segment in memory with the key/IV it already holds, shifts PCR, PTS and DTS onto the running timeline, and encrypts the segment with the same key again. Keys, IVs and signed URLs stay in memory only and never appear in logs, state or diagnostics.
+- A 90.7 s PyAV soak with Home Assistant's exact DTS validation against the live Tuya source produced 2842 frames/packets, 3 allocations, 0 jumps, 0 errors and empty stderr. The door viewer's continuous stream across allocation changes is now verified; the pan/tilt camera's direct RTSP path, low-power detection, fallback chain and still-image path via `ffmpeg` remain unchanged.
+- Quality: 197 tests passing (new: TS timestamps, 33-bit wraparound, AES roundtrip and allocation change), `ruff check`, `ruff format --check` and `git diff --check` clean. Entity IDs, unique IDs, automations and write paths are unchanged; the wallbox stays read-only. No new Python dependency was added; `cryptography` already ships with Home Assistant.
+
+---
+
 ## [0.4.2] - 2026-11-28
 
 ### Deutsch

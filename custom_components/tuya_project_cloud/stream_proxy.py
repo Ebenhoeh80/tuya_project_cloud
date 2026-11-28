@@ -25,6 +25,7 @@ from homeassistant.helpers.network import NoURLAvailableError, get_url
 
 from .api import TuyaApiError
 from .const import DOMAIN
+from .hls_ts import decrypt, encrypt, shift, timestamps
 from .utils import redact_identifier
 
 if TYPE_CHECKING:
@@ -47,7 +48,11 @@ PLAYLIST_WINDOW = 4
 # Tuya can leave a signed playlist reachable but frozen when its session
 # expires. Without a fetch error the worker would simply run out of segments.
 PLAYLIST_STALE_TIMEOUT = 30.0
+# One video frame at 25 fps, used to connect consecutive segments.
+FRAME_TICKS = 90000 // 25
 _KEY_URI_RE = re.compile(r'(URI=")([^"]+)(")')
+_KEY_METHOD_RE = re.compile(r"(?:^|[:,])METHOD=([A-Z0-9-]+)")
+_KEY_IV_RE = re.compile(r"(?:^|,)IV=(0[xX][0-9A-Fa-f]+)")
 
 
 @dataclass(frozen=True)
@@ -75,6 +80,18 @@ class _PlaylistState:
     known: set[tuple[int, str]] = field(default_factory=set)
     text: str = ""
     pending_discontinuity: bool = False
+    timestamp_offset: int = 0
+    next_dts: int | None = None
+    rebased_generation: int = 0
+
+
+@dataclass(frozen=True)
+class _SegmentMeta:
+    """Decryption details kept in memory for one advertised segment."""
+
+    generation: int
+    key_url: str
+    iv: bytes
 
 
 @dataclass(frozen=True)
@@ -94,6 +111,8 @@ class _Resource:
 
     url: str
     created: float
+    content_type: str = "video/mp2t"
+    body: bytes | None = None
 
 
 class TuyaStreamProxy:
@@ -109,6 +128,8 @@ class TuyaStreamProxy:
         self._failures: dict[str, float] = {}
         self._playlist_state: dict[str, _PlaylistState] = {}
         self._generations: dict[str, int] = {}
+        self._segment_meta: dict[str, _SegmentMeta] = {}
+        self._rebase_locks: dict[str, asyncio.Lock] = {}
         self._base_url: str | None = None
 
     def register(self, device_id: str, coordinator: TuyaProjectCloudCoordinator) -> str:
@@ -127,6 +148,12 @@ class TuyaStreamProxy:
         self._failures.pop(token, None)
         self._playlist_state.pop(token, None)
         self._generations.pop(token, None)
+        self._segment_meta = {
+            key: value
+            for key, value in self._segment_meta.items()
+            if not key.startswith(f"{token}:segment:")
+        }
+        self._rebase_locks.pop(token, None)
         self._resources = {
             key: value
             for key, value in self._resources.items()
@@ -247,7 +274,10 @@ class TuyaStreamProxy:
     def _store(self, token: str, kind: str, url: str, salt: str = "") -> str:
         """Store a signed URL under a stable, opaque identifier."""
         digest = hashlib.sha256(f"{token}:{salt}:{url}".encode()).hexdigest()[:20]
-        self._resources[f"{token}:{kind}:{digest}"] = _Resource(url, time.monotonic())
+        content_type = "video/mp2t" if kind == "segment" else "application/octet-stream"
+        self._resources[f"{token}:{kind}:{digest}"] = _Resource(
+            url, time.monotonic(), content_type
+        )
         return digest
 
     def _prune(self) -> None:
@@ -315,6 +345,10 @@ class TuyaStreamProxy:
         text = fetched[0].decode("utf-8", "replace")
         target_duration = 3
         key_line = ""
+        upstream_key_url = ""
+        key_method = ""
+        key_iv = ""
+        upstream_sequence = 0
         duration = "2"
         discontinuity = False
         candidates: list[tuple[str, str, str, bool]] = []
@@ -327,13 +361,19 @@ class TuyaStreamProxy:
                     target_duration = int(line.split(":", 1)[1])
                 except ValueError:
                     target_duration = 3
+            elif line.startswith("#EXT-X-MEDIA-SEQUENCE:"):
+                try:
+                    upstream_sequence = int(line.split(":", 1)[1])
+                except ValueError:
+                    upstream_sequence = 0
             elif line.startswith("#EXT-X-KEY:"):
 
                 def rewrite(match: re.Match[str]) -> str:
-                    key_url = urljoin(allocation.url, match.group(2))
+                    nonlocal upstream_key_url
+                    upstream_key_url = urljoin(allocation.url, match.group(2))
                     # Stable per upstream key URL: an unchanged key must not
                     # get a new local URI on every playlist poll.
-                    key_id = self._store(token, "key", key_url)
+                    key_id = self._store(token, "key", upstream_key_url)
                     return (
                         f"{match.group(1)}"
                         f"{self._resource_url(token, 'key', key_id)}"
@@ -341,6 +381,10 @@ class TuyaStreamProxy:
                     )
 
                 key_line = _KEY_URI_RE.sub(rewrite, line)
+                method = _KEY_METHOD_RE.search(line)
+                key_method = method.group(1).upper() if method else ""
+                iv = _KEY_IV_RE.search(line)
+                key_iv = iv.group(1) if iv else ""
             elif line == "#EXT-X-DISCONTINUITY":
                 discontinuity = True
             elif line.startswith("#EXTINF:"):
@@ -355,6 +399,16 @@ class TuyaStreamProxy:
         generation_changed = state.generation != allocation.generation
         if generation_changed:
             state.pending_discontinuity = True
+        segment_iv: bytes | None = None
+        if upstream_key_url and key_method in {"AES-128", "AES-128-CBC"}:
+            try:
+                segment_iv = (
+                    bytes.fromhex(key_iv[2:])
+                    if key_iv
+                    else upstream_sequence.to_bytes(16, "big")
+                )
+            except ValueError:
+                segment_iv = None
         fresh: list[tuple[tuple[int, str], _Segment]] = []
         for url, item_duration, item_key_line, item_discontinuity in candidates:
             identity = (allocation.generation, url)
@@ -363,12 +417,15 @@ class TuyaStreamProxy:
             if identity in state.known:
                 continue
             state.next_id += 1
+            resource_id = self._store(token, "segment", url, f"segment:{state.next_id}")
+            if segment_iv is not None:
+                self._segment_meta[f"{token}:segment:{resource_id}"] = _SegmentMeta(
+                    allocation.generation, upstream_key_url, segment_iv
+                )
             segment = _Segment(
                 generation=allocation.generation,
                 url=url,
-                resource_id=self._store(
-                    token, "segment", url, f"segment:{state.next_id}"
-                ),
+                resource_id=resource_id,
                 key_line=item_key_line,
                 duration=item_duration,
                 discontinuity=item_discontinuity,
@@ -421,11 +478,14 @@ class TuyaStreamProxy:
             f"#EXT-X-DISCONTINUITY-SEQUENCE:{first_generation}",
         ]
         current_key = ""
-        for index, segment in enumerate(state.segments):
+        for segment in state.segments:
             if segment.key_line and segment.key_line != current_key:
                 lines.append(segment.key_line)
                 current_key = segment.key_line
-            if index and segment.discontinuity:
+            # The tag marks the allocation boundary for HLS clients. FFmpeg
+            # does not shift timestamps for it, so the proxy rebases the
+            # segment DTS values while serving the segment instead.
+            if segment.discontinuity:
                 lines.append("#EXT-X-DISCONTINUITY")
             lines.append(f"#EXTINF:{segment.duration},")
             lines.append(self._resource_url(token, "segment", segment.resource_id))
@@ -433,14 +493,71 @@ class TuyaStreamProxy:
         state.text = "\n".join(lines) + "\n"
         return state.text
 
+    async def _rebase_segment(
+        self, token: str, encrypted: bytes, meta: _SegmentMeta
+    ) -> bytes:
+        """Shift a segment's timestamps onto the previous session's timeline."""
+        key_resource = await self._fetch(meta.key_url)
+        if key_resource is None:
+            return encrypted
+        key = key_resource[0]
+        clear = decrypt(encrypted, key, meta.iv)
+        if clear is None:
+            return encrypted
+        first, last = timestamps(clear)
+        if first is None or last is None:
+            return encrypted
+        lock = self._rebase_locks.setdefault(token, asyncio.Lock())
+        async with lock:
+            state = self._playlist_state.get(token)
+            if state is None:
+                return encrypted
+            if (
+                meta.generation != state.rebased_generation
+                and state.next_dts is not None
+            ):
+                offset = state.next_dts - first
+            elif state.next_dts is not None:
+                offset = state.timestamp_offset
+            else:
+                offset = 0
+            patched = shift(clear, offset)
+            state.timestamp_offset = offset
+            state.rebased_generation = meta.generation
+            _, patched_last = timestamps(patched)
+            if patched_last is not None:
+                state.next_dts = patched_last + FRAME_TICKS
+        rewritten = encrypt(patched, key, meta.iv)
+        return rewritten if rewritten is not None else encrypted
+
     async def resource(
         self, token: str, kind: str, resource_id: str
     ) -> tuple[bytes, dict[str, str]] | None:
         """Return a fetched segment or key by its opaque identifier."""
-        resource = self._resources.get(f"{token}:{kind}:{resource_id}")
+        cache_key = f"{token}:{kind}:{resource_id}"
+        resource = self._resources.get(cache_key)
         if resource is None or time.monotonic() - resource.created >= RESOURCE_TTL:
             return None
-        return await self._fetch(resource.url)
+        if resource.body is not None:
+            return resource.body, {"Content-Type": resource.content_type}
+        fetched = await self._fetch(resource.url)
+        if fetched is None:
+            return None
+        body, headers = fetched
+        # A real encrypted TS segment has many packets; tiny fixtures are left
+        # untouched so the proxy keeps working with opaque test data.
+        if (
+            kind == "segment"
+            and (meta := self._segment_meta.get(cache_key)) is not None
+            and len(body) >= 188 * 2
+        ):
+            body = await self._rebase_segment(token, body, meta)
+        self._resources[cache_key] = replace(
+            resource,
+            body=body,
+            content_type=headers.get("Content-Type", resource.content_type),
+        )
+        return body, headers
 
 
 class _BaseView(HomeAssistantView):
