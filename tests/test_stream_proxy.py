@@ -175,6 +175,8 @@ async def test_unknown_token_has_no_playlist_or_resource() -> None:
     proxy, _, _ = _proxy()
     assert await proxy.playlist("unknown") is None
     assert await proxy.resource("unknown", "segment", "x") is None
+    assert "unknown" not in proxy._playlist_state
+    assert "unknown" not in proxy._locks
     proxy.unregister("cam1")
     assert await proxy.playlist("unknown") is None
 
@@ -547,3 +549,92 @@ async def test_allocation_failure_is_cooldown_limited() -> None:
     assert await proxy.playlist(token) is None
     assert await proxy.playlist(token) is None
     assert allocate.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_discontinuity_sequence_header_is_not_a_tag() -> None:
+    """An upstream DSEQ header must not mark the next segment as a new session."""
+    proxy, token, _ = _proxy()
+    upstream = (
+        b"#EXTM3U\n"
+        b"#EXT-X-VERSION:6\n"
+        b"#EXT-X-DISCONTINUITY-SEQUENCE:7\n"
+        b"#EXT-X-TARGETDURATION:3\n"
+        b"#EXTINF:2.0,\n"
+        b"segment0.ts?token=SEGTOKEN\n"
+    )
+    session = MagicMock()
+    session.get = MagicMock(return_value=_response(upstream))
+    with patch(
+        "custom_components.tuya_project_cloud.stream_proxy.async_get_clientsession",
+        return_value=session,
+    ):
+        playlist = await proxy.playlist(token)
+    assert playlist is not None
+    assert "#EXT-X-DISCONTINUITY" not in playlist.splitlines()
+    assert "#EXT-X-DISCONTINUITY-SEQUENCE:0" in playlist
+
+
+@pytest.mark.asyncio
+async def test_empty_renewed_playlist_keeps_discontinuity_pending() -> None:
+    """A new session with no segments yet still gets exactly one discontinuity."""
+    proxy, token, allocate = _proxy()
+    allocate.side_effect = [
+        "https://upstream.invalid/live/old.m3u8?signInfo=OLD",
+        "https://upstream.invalid/live/new.m3u8?signInfo=NEW",
+    ]
+    session = MagicMock()
+    session.get = MagicMock(
+        side_effect=[
+            _response(_growing_playlist(2).encode()),
+            _response(b"#EXTM3U\n#EXT-X-TARGETDURATION:3\n"),
+            _response(_growing_playlist(2, prefix="renewed").encode()),
+        ]
+    )
+    with patch(
+        "custom_components.tuya_project_cloud.stream_proxy.async_get_clientsession",
+        return_value=session,
+    ):
+        first = await proxy.playlist(token)
+        proxy.invalidate(token)
+        middle = await proxy.playlist(token)
+        third = await proxy.playlist(token)
+    assert middle is not None and third is not None
+    assert "#EXT-X-DISCONTINUITY" not in middle.splitlines()
+    assert "#EXT-X-DISCONTINUITY" in third.splitlines()
+    assert "#EXT-X-DISCONTINUITY-SEQUENCE:0" in third
+    assert _segment_paths(first)[0] in _segment_paths(third)
+
+
+@pytest.mark.asyncio
+async def test_stale_allocation_does_not_rewrite_window() -> None:
+    """A late request with an older allocation returns the last valid playlist."""
+    proxy, token, allocate = _proxy()
+    session = MagicMock()
+    session.get = MagicMock(return_value=_response(_growing_playlist(3).encode()))
+    with patch(
+        "custom_components.tuya_project_cloud.stream_proxy.async_get_clientsession",
+        return_value=session,
+    ):
+        first = await proxy.playlist(token)
+        proxy._playlist_state[token].generation += 1
+        second = await proxy.playlist(token)
+    assert second == first
+    assert allocate.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_key_uri_stays_stable_across_polls() -> None:
+    """An unchanged upstream key keeps its local URI between playlist polls."""
+    proxy, token, _ = _proxy()
+    session = MagicMock()
+    session.get = MagicMock(return_value=_response(PLAYLIST.encode()))
+    with patch(
+        "custom_components.tuya_project_cloud.stream_proxy.async_get_clientsession",
+        return_value=session,
+    ):
+        first = await proxy.playlist(token)
+        second = await proxy.playlist(token)
+    assert first is not None and second is not None
+    key = re.compile(r'URI="([^"]+)"')
+    assert key.search(first).group(1) == key.search(second).group(1)

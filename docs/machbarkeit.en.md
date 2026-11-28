@@ -78,7 +78,7 @@ The live tests showed that the `v1.0/devices` family works for linked devices. B
 4. **Entities**: Dynamic from `functions`/`status` + DPS codes. Platforms: switch, sensor, light, climate, cover, number, camera; additional shadow sensors from the IoT Core thing shadow. Entity descriptions with `device_class`, `native_unit_of_measurement`, `EntityCategory`.
 5. **Device/range**: `DeviceInfo` per Tuya device with `identifiers={(DOMAIN, device_id), ("tuya", device_id)}`; the second identifier matches the shared Tuya device ID and affects "Linked devices" from HA 2026.8 onward. On older HA versions it can merge registry entries from different Tuya integrations. Child devices where applicable.
 6. **Diagnostics/repairs**: Redaction of tokens, secrets, DPS values with personal data; repairs for auth errors, wrong region, missing API authorization.
-7. **Tests**: `pytest-homeassistant-custom-component`, 0.1.0 intermediate state: 36 tests green, 84 % overall coverage; 0.4.2 state: 187 tests green, `ruff check`/`format` clean (0.4.1: 183, 0.4.0: 179, 0.3.1: 169). Config flow, coordinator, entity mapping, camera, redaction, error paths.
+7. **Tests**: `pytest-homeassistant-custom-component`, 0.1.0 intermediate state: 36 tests green, 84 % overall coverage; 0.4.2 state: 191 tests green, `ruff check`/`format` clean (0.4.1: 183, 0.4.0: 179, 0.3.1: 169). Config flow, coordinator, entity mapping, camera, redaction, error paths.
 
 ## 8. Live proof (2026-11-27) – important rule fulfilled
 
@@ -118,7 +118,7 @@ The command was again **idempotent** (exact read value written back). This prove
 
 | Check | Result |
 |---|---|
-| Unit tests (Python 3.14, `pytest-homeassistant-custom-component`) | **187 passed** (0.4.2; 183 in 0.4.1, 179 in 0.4.0, 169 in 0.3.1) |
+| Unit tests (Python 3.14, `pytest-homeassistant-custom-component`) | **191 passed** (0.4.2; 183 in 0.4.1, 179 in 0.4.0, 169 in 0.3.1) |
 | `ruff check` / `ruff format --check` | **All checks passed** / clean |
 | Live smoke test of own client | **Success** (see above) |
 | Live shadow/stream probe of own client | **Success** (8 devices, 23 DPS, HLS allocation; see section 11) |
@@ -140,7 +140,7 @@ Both stream endpoints are listed in the official User Permission Package (as of 
 
 **Context:** The historic HA entity `camera.turspion` delivered 404 streams and put the whole integration into `setup_error` on 2026-10-06 (ADR 0009 in the SecondBrain wiki). The original cause remains unproven; the OpenAPI now really delivers the stream with the project token. A `camera` platform is therefore feasible and **implemented in 0.2.0** (see section 11).
 
-**Implementation:** Since 0.4.0 `stream_source()` allocates a fresh source on every stream start. The pan/tilt camera uses RTSP (read-only PyAV probe on 2026-11-28: 884 frames in 60 s); the battery-powered door viewer uses HLS detected from `wireless_lowpower=true` (plus `wireless_awake` and `wireless_powermode`; a single power code is not enough) (911 frames in 61 s; RTSP delivered only one packet after 30 s). Since 0.4.1 the door viewer's video runs through the local HLS reverse proxy from 0.3.0 again: the direct HLS source decodes in the PyAV probe but stopped after a few packets during HA playback (`Stream ended; no additional packets`). The proxy serves a stable local `index.m3u8` and allocates a fresh upstream URL on every start. On a worker failure the cached proxy allocation is dropped and `Stream.update_source()` is called with the same local URL (10 s minimum interval); mains-powered cameras keep their fresh RTSP source. Without a proxy route the direct fallback chain (preferred type, alternate type, proxy) remains unchanged. WebRTC is not offered; go2rtc `tuya://` is optional for two-way audio.
+**Implementation:** Since 0.4.0 `stream_source()` allocates a fresh source on every stream start. The pan/tilt camera uses RTSP (read-only PyAV probe on 2026-11-28: 884 frames in 60 s); the battery-powered door viewer uses HLS detected from `wireless_lowpower=true` (plus `wireless_awake` and `wireless_powermode`; a single power code is not enough) (911 frames in 61 s; RTSP delivered only one packet after 30 s). Since 0.4.1 the door viewer's video runs through the local HLS reverse proxy from 0.3.0 again: the direct HLS source decodes in the PyAV probe but stopped after a few packets during HA playback (`Stream ended; no additional packets`). The proxy serves a stable local `index.m3u8` and allocates a fresh upstream URL on every start. On a worker failure the cached proxy allocation is dropped and `Stream.update_source()` is called with the same local URL (10 s minimum interval); mains-powered cameras keep their fresh RTSP source. Since 0.4.2 the proxy serves a compliant live playlist with a sliding four-segment window, advancing `EXT-X-MEDIA-SEQUENCE`, version 6 with a matching `EXT-X-DISCONTINUITY-SEQUENCE` and 30 s renewal for frozen playlists. Without a proxy route the direct fallback chain (preferred type, alternate type, proxy) remains unchanged. WebRTC is not offered; go2rtc `tuya://` is optional for two-way audio.
 
 Evidence in the SecondBrain wiki: `wiki/fragen/2026-11-27-tuya-tuer-spion-livebild.md` (not part of this repository).
 

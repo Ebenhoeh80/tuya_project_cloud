@@ -73,6 +73,8 @@ class _PlaylistState:
     target_duration: int = 3
     next_id: int = 0
     known: set[tuple[int, str]] = field(default_factory=set)
+    text: str = ""
+    pending_discontinuity: bool = False
 
 
 @dataclass(frozen=True)
@@ -106,7 +108,7 @@ class TuyaStreamProxy:
         self._locks: dict[str, asyncio.Lock] = {}
         self._failures: dict[str, float] = {}
         self._playlist_state: dict[str, _PlaylistState] = {}
-        self._generation = -1
+        self._generations: dict[str, int] = {}
         self._base_url: str | None = None
 
     def register(self, device_id: str, coordinator: TuyaProjectCloudCoordinator) -> str:
@@ -124,6 +126,7 @@ class TuyaStreamProxy:
         self._locks.pop(token, None)
         self._failures.pop(token, None)
         self._playlist_state.pop(token, None)
+        self._generations.pop(token, None)
         self._resources = {
             key: value
             for key, value in self._resources.items()
@@ -219,9 +222,10 @@ class TuyaStreamProxy:
                     type(err).__name__,
                 )
                 return None
-            self._generation += 1
+            generation = self._generations.get(token, -1) + 1
+            self._generations[token] = generation
             allocation = _Allocation(
-                url, time.monotonic(), device_id, coordinator, self._generation
+                url, time.monotonic(), device_id, coordinator, generation
             )
             self._allocations[token] = allocation
             self._failures.pop(token, None)
@@ -267,6 +271,8 @@ class TuyaStreamProxy:
 
     async def playlist(self, token: str) -> str | None:
         """Return a local playlist with all signed upstream URLs hidden."""
+        if token not in self._routes:
+            return None
         state = self._playlist_state.setdefault(token, _PlaylistState())
         allocation = await self._allocation(token)
         if allocation is None:
@@ -297,6 +303,11 @@ class TuyaStreamProxy:
             fetched = refreshed
             state.last_new = time.monotonic()
 
+        # A slower concurrent request must not rewind the window with its older
+        # allocation. It gets the last valid playlist instead.
+        if token not in self._routes or allocation.generation < state.generation:
+            return state.text or None
+
         # Parse Tuya's media playlist into logical segments. Each segment keeps
         # the local URL it was first advertised with, even when a later renewal
         # replaces the signed upstream URL. That keeps FFmpeg's playlist cache
@@ -320,8 +331,9 @@ class TuyaStreamProxy:
 
                 def rewrite(match: re.Match[str]) -> str:
                     key_url = urljoin(allocation.url, match.group(2))
-                    key_id = self._store(token, "key", key_url, f"key:{state.next_id}")
-                    state.next_id += 1
+                    # Stable per upstream key URL: an unchanged key must not
+                    # get a new local URI on every playlist poll.
+                    key_id = self._store(token, "key", key_url)
                     return (
                         f"{match.group(1)}"
                         f"{self._resource_url(token, 'key', key_id)}"
@@ -329,7 +341,7 @@ class TuyaStreamProxy:
                     )
 
                 key_line = _KEY_URI_RE.sub(rewrite, line)
-            elif line.startswith("#EXT-X-DISCONTINUITY"):
+            elif line == "#EXT-X-DISCONTINUITY":
                 discontinuity = True
             elif line.startswith("#EXTINF:"):
                 duration = line.split(":", 1)[1].split(",", 1)[0] or "2"
@@ -341,6 +353,8 @@ class TuyaStreamProxy:
                 discontinuity = False
 
         generation_changed = state.generation != allocation.generation
+        if generation_changed:
+            state.pending_discontinuity = True
         fresh: list[tuple[tuple[int, str], _Segment]] = []
         for url, item_duration, item_key_line, item_discontinuity in candidates:
             identity = (allocation.generation, url)
@@ -359,9 +373,14 @@ class TuyaStreamProxy:
                 duration=item_duration,
                 discontinuity=item_discontinuity,
             )
-            if generation_changed and not fresh and state.segments:
-                segment = replace(segment, discontinuity=True)
             fresh.append((identity, segment))
+
+        # Mark the first segment of a new session even when the first playlist
+        # of that session was still empty.
+        if state.pending_discontinuity and fresh:
+            identity, segment = fresh[0]
+            fresh[0] = (identity, replace(segment, discontinuity=True))
+            state.pending_discontinuity = False
 
         if generation_changed:
             # Keep already advertised segments at their original sequences and
@@ -411,7 +430,8 @@ class TuyaStreamProxy:
             lines.append(f"#EXTINF:{segment.duration},")
             lines.append(self._resource_url(token, "segment", segment.resource_id))
         self._prune()
-        return "\n".join(lines) + "\n"
+        state.text = "\n".join(lines) + "\n"
+        return state.text
 
     async def resource(
         self, token: str, kind: str, resource_id: str
