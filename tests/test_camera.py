@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import json
 import logging
-from unittest.mock import AsyncMock, MagicMock, patch
+from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 from homeassistant.components.camera import CameraEntityFeature
@@ -17,11 +19,16 @@ from custom_components.tuya_project_cloud.camera import (
 )
 from custom_components.tuya_project_cloud.stream_proxy import PLAYLIST_PATH
 
-DIRECT_URL = "https://example.invalid/live.m3u8"
+DIRECT_URL = "rtsp://example.invalid:554/live"
+FALLBACK_URL = "https://example.invalid/live.m3u8"
 
 
 def _entry(
-    *, online: bool = True, enabled: bool = True, refreshed: bool = True
+    *,
+    online: bool = True,
+    enabled: bool = True,
+    refreshed: bool = True,
+    dps_codes: tuple[str, ...] = (),
 ) -> MagicMock:
     """Return an entry with one mocked camera device."""
     device = TuyaDevice(
@@ -31,6 +38,7 @@ def _entry(
         product_id="p1",
         online=online,
         last_update_success=refreshed,
+        status={code: True for code in dps_codes},
     )
     coordinator = MagicMock()
     coordinator.data = {"cam1": device}
@@ -66,31 +74,107 @@ async def _camera_with_stream(entry: MagicMock, stream: MagicMock) -> MagicMock:
 
 
 @pytest.mark.asyncio
-async def test_camera_uses_stable_local_proxy_url() -> None:
-    """Entities expose a stable local URL, never the signed Tuya URL."""
+async def test_camera_uses_fresh_rtsp_url() -> None:
+    """Every stream start gets a fresh RTSP URL; signed URLs stay out of state."""
     entry = _entry()
     camera = await _setup_camera(entry)
     assert CameraEntityFeature.STREAM in camera.supported_features
     source = await camera.stream_source()
-    assert source is not None
-    assert source.startswith("http")
-    assert f"{PLAYLIST_PATH}/" in source
-    assert source.endswith("/index.m3u8")
-    entry.runtime_data.client.async_allocate_stream.assert_not_awaited()
+    assert source == DIRECT_URL
+    entry.runtime_data.client.async_allocate_stream.assert_awaited_once_with(
+        "cam1", "rtsp"
+    )
     assert DIRECT_URL not in str(camera.state_attributes)
     assert DIRECT_URL not in str(camera.extra_state_attributes)
-    assert "/index.m3u8" not in str(camera.state_attributes)
 
 
 @pytest.mark.asyncio
-async def test_camera_without_proxy_falls_back_to_direct_hls() -> None:
-    """A camera constructed without a proxy keeps the previous behaviour."""
-    entry = _entry()
-    coordinator = entry.runtime_data
-    camera = TuyaCamera(coordinator, coordinator.data["cam1"])
-    assert await camera.stream_source() == DIRECT_URL
+async def test_low_power_camera_uses_hls() -> None:
+    """Battery-powered cameras stay awake on HLS, not RTSP."""
+    entry = _entry(dps_codes=("wireless_lowpower",))
+    entry.runtime_data.client.async_allocate_stream = AsyncMock(
+        side_effect=lambda _id, kind: FALLBACK_URL if kind == "hls" else DIRECT_URL
+    )
+    camera = await _setup_camera(entry)
+    assert await camera.stream_source() == FALLBACK_URL
     entry.runtime_data.client.async_allocate_stream.assert_awaited_once_with(
         "cam1", "hls"
+    )
+
+
+@pytest.mark.asyncio
+async def test_low_power_function_code_also_selects_hls() -> None:
+    """A low-power code exposed only as a function is sufficient too."""
+    entry = _entry()
+    entry.runtime_data.client.async_allocate_stream = AsyncMock(
+        side_effect=lambda _id, kind: FALLBACK_URL if kind == "hls" else DIRECT_URL
+    )
+    camera = await _setup_camera(entry)
+    camera.coordinator.data["cam1"].functions = {
+        "wireless_awake": MagicMock(),
+        "wireless_powermode": MagicMock(),
+    }
+    assert await camera.stream_source() == FALLBACK_URL
+    entry.runtime_data.client.async_allocate_stream.assert_awaited_once_with(
+        "cam1", "hls"
+    )
+
+
+@pytest.mark.asyncio
+async def test_single_power_code_keeps_rtsp() -> None:
+    """A lone power-mode code must not misclassify a mains-powered camera."""
+    entry = _entry(dps_codes=("wireless_powermode",))
+    camera = await _setup_camera(entry)
+    assert await camera.stream_source() == DIRECT_URL
+    entry.runtime_data.client.async_allocate_stream.assert_awaited_once_with(
+        "cam1", "rtsp"
+    )
+
+
+@pytest.mark.asyncio
+async def test_explicit_non_lowpower_value_keeps_rtsp() -> None:
+    """An explicit false low-power flag wins over the pair heuristic."""
+    entry = _entry(
+        dps_codes=("wireless_lowpower", "wireless_awake", "wireless_powermode")
+    )
+    camera = await _setup_camera(entry)
+    camera.coordinator.data["cam1"].status["wireless_lowpower"] = False
+    assert await camera.stream_source() == DIRECT_URL
+    entry.runtime_data.client.async_allocate_stream.assert_awaited_once_with(
+        "cam1", "rtsp"
+    )
+
+
+@pytest.mark.asyncio
+async def test_rtsp_failure_falls_back_to_direct_hls() -> None:
+    """A camera without the low-power codes tries the other stream type."""
+    entry = _entry()
+    coordinator = entry.runtime_data
+    coordinator.client.async_allocate_stream = AsyncMock(
+        side_effect=[TuyaApiError("denied"), FALLBACK_URL]
+    )
+    camera = TuyaCamera(coordinator, coordinator.data["cam1"])
+    assert await camera.stream_source() == FALLBACK_URL
+    coordinator.client.async_allocate_stream.assert_has_awaits(
+        [call("cam1", "rtsp"), call("cam1", "hls")]
+    )
+
+
+@pytest.mark.asyncio
+async def test_camera_uses_proxy_when_rtsp_fails() -> None:
+    """A proxy-equipped camera falls back to its stable local playlist URL."""
+    entry = _entry()
+    coordinator = entry.runtime_data
+    coordinator.client.async_allocate_stream = AsyncMock(
+        side_effect=[TuyaApiError("denied"), TuyaApiError("denied")]
+    )
+    camera = await _setup_camera(entry)
+    source = await camera.stream_source()
+    assert source is not None
+    assert f"{PLAYLIST_PATH}/" in source
+    assert source.endswith("/index.m3u8")
+    coordinator.client.async_allocate_stream.assert_has_awaits(
+        [call("cam1", "rtsp"), call("cam1", "hls")]
     )
 
 
@@ -129,7 +213,7 @@ async def test_fallback_allocation_error_is_not_fatal() -> None:
     """A direct allocation error returns no source without breaking setup."""
     entry = _entry()
     entry.runtime_data.client.async_allocate_stream = AsyncMock(
-        side_effect=TuyaApiError("denied")
+        side_effect=[TuyaApiError("denied"), TuyaApiError("denied")]
     )
     coordinator = entry.runtime_data
     camera = TuyaCamera(coordinator, coordinator.data["cam1"])
@@ -138,56 +222,44 @@ async def test_fallback_allocation_error_is_not_fatal() -> None:
 
 @pytest.mark.asyncio
 async def test_expired_stream_source_is_renewed() -> None:
-    """A failed worker invalidates the proxy and restarts with the same URL."""
+    """A failed worker gets a freshly allocated RTSP source."""
     entry = _entry()
     stream = _stream()
-    camera = await _setup_camera(entry)
-    source = await camera.stream_source()
-    camera.stream = stream
-    with patch.object(
-        camera._proxy, "invalidate", wraps=camera._proxy.invalidate
-    ) as invalidate:
-        await camera._async_renew_stream_source()
-    assert invalidate.call_count == 1
-    stream.update_source.assert_called_once_with(source)
-    entry.runtime_data.client.async_allocate_stream.assert_not_awaited()
+    camera = await _camera_with_stream(entry, stream)
+    await camera._async_renew_stream_source()
+    stream.update_source.assert_called_once_with(DIRECT_URL)
+    entry.runtime_data.client.async_allocate_stream.assert_awaited_once_with(
+        "cam1", "rtsp"
+    )
 
 
 @pytest.mark.asyncio
 async def test_available_stream_is_not_renewed() -> None:
-    """A healthy stream keeps its source and does not touch the proxy."""
+    """A healthy stream keeps its source and allocates nothing."""
     entry = _entry()
     stream = _stream(available=True)
     camera = await _camera_with_stream(entry, stream)
-    with patch.object(
-        camera._proxy, "invalidate", wraps=camera._proxy.invalidate
-    ) as invalidate:
-        await camera._async_renew_stream_source()
-    invalidate.assert_not_called()
+    await camera._async_renew_stream_source()
     stream.update_source.assert_not_called()
+    entry.runtime_data.client.async_allocate_stream.assert_not_awaited()
 
 
 @pytest.mark.asyncio
 async def test_renewal_is_throttled_and_recovers_after_interval() -> None:
-    """Repeated failures do not hammer the proxy, but still renew later."""
+    """Repeated failures do not hammer the API, but still renew later."""
     entry = _entry()
     stream = _stream()
     camera = await _camera_with_stream(entry, stream)
     clock = {"now": 0.0}
-    with (
-        patch(
-            "custom_components.tuya_project_cloud.camera.time.monotonic",
-            side_effect=lambda: clock["now"],
-        ),
-        patch.object(
-            camera._proxy, "invalidate", wraps=camera._proxy.invalidate
-        ) as invalidate,
+    with patch(
+        "custom_components.tuya_project_cloud.camera.time.monotonic",
+        side_effect=lambda: clock["now"],
     ):
         await camera._async_renew_stream_source()
         await camera._async_renew_stream_source()
         clock["now"] = 100.0
         await camera._async_renew_stream_source()
-    assert invalidate.call_count == 2
+    assert entry.runtime_data.client.async_allocate_stream.await_count == 2
     assert stream.update_source.call_count == 2
 
 
@@ -196,7 +268,7 @@ async def test_fallback_renewal_allocation_error_is_not_fatal() -> None:
     """A failed direct renewal leaves the stream untouched and raises nothing."""
     entry = _entry()
     entry.runtime_data.client.async_allocate_stream = AsyncMock(
-        side_effect=TuyaApiError("denied")
+        side_effect=[TuyaApiError("denied"), TuyaApiError("denied")]
     )
     coordinator = entry.runtime_data
     camera = TuyaCamera(coordinator, coordinator.data["cam1"])
@@ -208,15 +280,12 @@ async def test_fallback_renewal_allocation_error_is_not_fatal() -> None:
 
 @pytest.mark.asyncio
 async def test_offline_camera_does_not_renew() -> None:
-    """An offline or stale device never triggers a proxy renewal."""
+    """An offline or stale device never triggers a stream renewal."""
     entry = _entry(online=False)
     stream = _stream()
     camera = await _camera_with_stream(entry, stream)
-    with patch.object(
-        camera._proxy, "invalidate", wraps=camera._proxy.invalidate
-    ) as invalidate:
-        await camera._async_renew_stream_source()
-    invalidate.assert_not_called()
+    await camera._async_renew_stream_source()
+    entry.runtime_data.client.async_allocate_stream.assert_not_awaited()
     stream.update_source.assert_not_called()
 
 
@@ -230,15 +299,10 @@ async def test_stream_state_callback_triggers_renewal() -> None:
     camera.async_write_ha_state = MagicMock()
     tasks: list = []
     camera.hass.async_create_task = lambda coro: tasks.append(coro)
-    with (
-        patch(
-            "homeassistant.components.camera.Camera.async_create_stream",
-            new_callable=AsyncMock,
-            return_value=stream,
-        ),
-        patch.object(
-            camera._proxy, "invalidate", wraps=camera._proxy.invalidate
-        ) as invalidate,
+    with patch(
+        "homeassistant.components.camera.Camera.async_create_stream",
+        new_callable=AsyncMock,
+        return_value=stream,
     ):
         assert await camera.async_create_stream() is stream
         stream.set_update_callback.assert_called_once()
@@ -247,8 +311,7 @@ async def test_stream_state_callback_triggers_renewal() -> None:
         camera.async_write_ha_state.assert_called_once()
         assert len(tasks) == 1
         await tasks[0]
-    invalidate.assert_called_once()
-    assert stream.update_source.call_args.args[0].endswith("/index.m3u8")
+    stream.update_source.assert_called_once_with(DIRECT_URL)
 
 
 @pytest.mark.asyncio
@@ -277,7 +340,7 @@ async def test_callback_is_reinstalled_on_repeated_stream_creation() -> None:
     callback()
     assert len(tasks) == 1
     await tasks[0]
-    assert stream.update_source.call_args.args[0].endswith("/index.m3u8")
+    stream.update_source.assert_called_once_with(DIRECT_URL)
 
 
 @pytest.mark.asyncio
@@ -287,10 +350,11 @@ async def test_renewal_applies_source_if_worker_recovers_during_renewal() -> Non
     stream = _stream()
     camera = await _camera_with_stream(entry, stream)
 
-    def invalidate(*args: object) -> None:
+    async def allocate() -> str:
         stream.available = True
+        return DIRECT_URL
 
-    with patch.object(camera._proxy, "invalidate", side_effect=invalidate):
+    with patch.object(camera, "_async_allocate_source", new=allocate):
         await camera._async_renew_stream_source()
     assert stream.update_source.call_count == 1
 
@@ -302,22 +366,85 @@ async def test_renewal_does_not_touch_a_replaced_stream() -> None:
     stream = _stream()
     camera = await _camera_with_stream(entry, stream)
 
-    def invalidate(*args: object) -> None:
+    async def allocate() -> str:
         camera.stream = _stream()
+        return DIRECT_URL
 
-    with patch.object(camera._proxy, "invalidate", side_effect=invalidate):
+    with patch.object(camera, "_async_allocate_source", new=allocate):
         await camera._async_renew_stream_source()
     stream.update_source.assert_not_called()
+
+
+def test_manifest_loads_ffmpeg_for_still_images() -> None:
+    """The still-image path needs HA's ffmpeg manager to be set up."""
+    manifest = (
+        Path(__file__).parents[1]
+        / "custom_components"
+        / "tuya_project_cloud"
+        / "manifest.json"
+    )
+    assert "ffmpeg" in json.loads(manifest.read_text(encoding="utf-8"))["dependencies"]
+
+
+@pytest.mark.asyncio
+async def test_camera_image_uses_fresh_source(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Still images use the same fresh source as upstream Tuya."""
+    entry = _entry()
+    camera = await _setup_camera(entry)
+    get_image = AsyncMock(return_value=b"jpeg")
+    with patch("homeassistant.components.ffmpeg.async_get_image", new=get_image):
+        assert await camera.async_camera_image(320, 240) == b"jpeg"
+    get_image.assert_awaited_once_with(camera.hass, DIRECT_URL, width=320, height=240)
+    assert DIRECT_URL not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_camera_image_without_source_returns_none() -> None:
+    """No allocation means no image, without calling ffmpeg."""
+    entry = _entry(online=False)
+    camera = await _setup_camera(entry)
+    get_image = AsyncMock(return_value=b"jpeg")
+    with patch("homeassistant.components.ffmpeg.async_get_image", new=get_image):
+        assert await camera.async_camera_image() is None
+    get_image.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_camera_image_does_not_detach_unavailable_stream() -> None:
+    """A snapshot must leave an existing stream worker attached."""
+    entry = _entry()
+    stream = _stream()
+    camera = await _camera_with_stream(entry, stream)
+    get_image = AsyncMock(return_value=b"jpeg")
+    with patch("homeassistant.components.ffmpeg.async_get_image", new=get_image):
+        assert await camera.async_camera_image() == b"jpeg"
+    assert camera.stream is stream
+    get_image.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_camera_image_ffmpeg_error_is_not_swallowed() -> None:
+    """A real ffmpeg failure stays visible to HA's image endpoint."""
+    entry = _entry()
+    camera = await _setup_camera(entry)
+    get_image = AsyncMock(side_effect=RuntimeError("ffmpeg failed"))
+    with (
+        patch("homeassistant.components.ffmpeg.async_get_image", new=get_image),
+        pytest.raises(RuntimeError),
+    ):
+        await camera.async_camera_image()
 
 
 @pytest.mark.asyncio
 async def test_renewal_logs_no_url_or_device_id(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """Even debug messages must not expose the signed URL or device identifier."""
+    """Even debug messages must not expose a URL or device identifier."""
     entry = _entry()
     entry.runtime_data.client.async_allocate_stream = AsyncMock(
-        side_effect=TuyaApiError("denied")
+        side_effect=[TuyaApiError("denied"), TuyaApiError("denied")]
     )
     coordinator = entry.runtime_data
     camera = TuyaCamera(coordinator, coordinator.data["cam1"])
@@ -329,3 +456,4 @@ async def test_renewal_logs_no_url_or_device_id(
         await camera._async_renew_stream_source()
     assert "cam1" not in caplog.text
     assert DIRECT_URL not in caplog.text
+    assert FALLBACK_URL not in caplog.text

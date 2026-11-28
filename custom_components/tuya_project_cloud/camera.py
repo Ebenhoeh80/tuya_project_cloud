@@ -30,8 +30,21 @@ _LOGGER = logging.getLogger(__name__)
 
 PARALLEL_UPDATES = 0
 
-# Signed HLS URLs are short-lived. HA retries a failed stream with the same
-# source until it works, so an expired URL has to be replaced explicitly.
+# Home Assistant's Tuya camera (and Xtend Tuya, which inherits from it) asks
+# for a fresh RTSP allocation on every stream start. A live probe on 2026-11-28
+# decoded 884 frames in 60 s that way for the pan/tilt camera, while the
+# battery-powered door viewer stayed asleep on RTSP (one packet in 30 s) and
+# delivered 911 frames in 61 s over HLS. Select the stream type from the
+# low-power DPS codes instead of guessing per device. A single
+# `wireless_powermode`/`wireless_awake` code can also occur on mains-powered
+# cameras, so require both unless `wireless_lowpower` is explicitly true.
+STREAM_TYPE_PRIMARY = "rtsp"
+STREAM_TYPE_FALLBACK = "hls"
+LOW_POWER_DPS_CODE = "wireless_lowpower"
+LOW_POWER_PAIR_CODES = frozenset({"wireless_awake", "wireless_powermode"})
+
+# Signed URLs are short-lived. HA retries a failed stream with the same source
+# until it works, so an expired URL has to be replaced explicitly.
 MIN_SOURCE_RENEWAL_INTERVAL = 10.0
 
 # "sp" is the Tuya category for IP cameras; the door viewer was verified live.
@@ -60,7 +73,7 @@ async def async_setup_entry(
 
 
 class TuyaCamera(CoordinatorEntity["TuyaProjectCloudCoordinator"], Camera):
-    """HLS camera backed by a short-lived Tuya stream allocation."""
+    """Camera backed by a fresh short-lived Tuya allocation per stream start."""
 
     _attr_has_entity_name = True
     _attr_name = None
@@ -125,8 +138,46 @@ class TuyaCamera(CoordinatorEntity["TuyaProjectCloudCoordinator"], Camera):
         if self.stream is not None and not self.stream.available:
             self.hass.async_create_task(self._async_renew_stream_source())
 
+    @staticmethod
+    def _prefers_hls(device: TuyaDevice) -> bool:
+        """Return whether a battery-powered camera needs the HLS path."""
+        codes = set(device.status) | set(device.functions)
+        if LOW_POWER_DPS_CODE in codes:
+            # An explicit false value wins even if the pair codes are present.
+            return device.status.get(LOW_POWER_DPS_CODE) is not False
+        return LOW_POWER_PAIR_CODES <= codes
+
+    async def _async_allocate_source(self) -> str | None:
+        """Return a fresh source for the device's stream type."""
+        device = self._tuya_device
+        if not device or not device.online or not device.last_update_success:
+            return None
+        preferred = (
+            STREAM_TYPE_FALLBACK if self._prefers_hls(device) else STREAM_TYPE_PRIMARY
+        )
+        alternate = (
+            STREAM_TYPE_PRIMARY
+            if preferred == STREAM_TYPE_FALLBACK
+            else STREAM_TYPE_FALLBACK
+        )
+        for stream_type in (preferred, alternate):
+            try:
+                return await self.coordinator.client.async_allocate_stream(
+                    self._device_id, stream_type
+                )
+            except TuyaApiError:
+                _LOGGER.debug(
+                    "Cannot allocate a stream for camera %s (%s)",
+                    redact_identifier(self._device_id),
+                    type(self).__name__,
+                )
+        if self._proxy_token and self._proxy is not None:
+            self._proxy.invalidate(self._proxy_token)
+            return self._proxy.source_url(self._proxy_token)
+        return None
+
     async def _async_renew_stream_source(self) -> None:
-        """Replace an expired signed HLS URL without exposing it anywhere."""
+        """Replace an expired source without exposing it anywhere."""
         stream = self.stream
         if stream is None or stream.available:
             return
@@ -142,46 +193,33 @@ class TuyaCamera(CoordinatorEntity["TuyaProjectCloudCoordinator"], Camera):
                 and now - self._last_renewal < MIN_SOURCE_RENEWAL_INTERVAL
             ):
                 return
-            device = self._tuya_device
-            if not device or not device.online or not device.last_update_success:
+            source = await self._async_allocate_source()
+            if source is None:
                 return
-            if self._proxy_token and self._proxy is not None:
-                self._proxy.invalidate(self._proxy_token)
-                source = self._proxy.source_url(self._proxy_token)
-            else:
-                try:
-                    source = await self.coordinator.client.async_allocate_stream(
-                        self._device_id, "hls"
-                    )
-                except TuyaApiError:
-                    _LOGGER.debug(
-                        "Cannot renew a stream for camera %s (%s)",
-                        redact_identifier(self._device_id),
-                        type(self).__name__,
-                    )
-                    return
             if self.stream is not stream:
                 return
             stream.update_source(source)
             self._last_renewal = time.monotonic()
 
     async def stream_source(self) -> str | None:
-        """Return a stable local proxy URL; never expose signed URLs."""
+        """Return a fresh source; signed URLs never reach HA state or logs."""
         device = self._tuya_device
         if not device or not device.online or not device.last_update_success:
             return None
         if self.stream is not None and not self.stream.available:
             self.stream = None
-        if self._proxy_token and self._proxy is not None:
-            return self._proxy.source_url(self._proxy_token)
-        try:
-            return await self.coordinator.client.async_allocate_stream(
-                self._device_id, "hls"
-            )
-        except TuyaApiError:
-            _LOGGER.debug(
-                "Cannot allocate a stream for camera %s (%s)",
-                redact_identifier(self._device_id),
-                type(self).__name__,
-            )
+        return await self._async_allocate_source()
+
+    async def async_camera_image(
+        self, width: int | None = None, height: int | None = None
+    ) -> bytes | None:
+        """Return a still image from the same fresh source HA Core uses."""
+        from homeassistant.components import ffmpeg
+
+        # Allocate directly: a snapshot must not detach a live stream worker.
+        source = await self._async_allocate_source()
+        if not source:
             return None
+        return await ffmpeg.async_get_image(
+            self.hass, source, width=width, height=height
+        )

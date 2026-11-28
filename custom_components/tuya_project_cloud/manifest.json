@@ -3,11 +3,11 @@
   "name": "Tuya Project Cloud",
   "codeowners": ["@Ebenhoeh80"],
   "config_flow": true,
-  "dependencies": ["http"],
+  "dependencies": ["ffmpeg", "http"],
   "documentation": "https://github.com/Ebenhoeh80/tuya_project_cloud",
   "integration_type": "hub",
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/Ebenhoeh80/tuya_project_cloud/issues",
   "requirements": [],
-  "version": "0.3.1"
+  "version": "0.4.0"
 }

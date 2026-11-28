@@ -1,5 +1,25 @@
 # Changelog / Änderungen
 
+## [0.4.0] - 2026-11-28
+
+### Deutsch
+
+- Das Kamera-Livebild nutzt jetzt – wie Home Assistants eigene Tuya-Integration und Xtend Tuya – eine bei jedem Streamstart frisch allokierte RTSP-Quelle. Der bisherige lokale HLS-Re-Proxy bleibt erhalten, wird aber nur noch als Fallback verwendet.
+- Batteriebetriebene Kameras werden über `wireless_lowpower=true` oder das Paar `wireless_awake` + `wireless_powermode` erkannt und nutzen HLS (ein einzelner Power-Code genügt nicht): Eine rein lesende PyAV-Probe am 28.11.2026 lieferte dort 911 Frames in 61 s, während RTSP nach 30 s erst ein Packet brachte. Die Pan/Tilt-Kamera erreichte über RTSP 884 Frames in 60 s, über HLS nur 239 Frames in 622 s.
+- Scheitert die bevorzugte Allokation, wird automatisch der andere Stream-Typ und danach der lokale Proxy versucht. Meldet der HA-Stream-Worker eine unbrauchbare Quelle, setzt `Stream.update_source()` eine neu allokierte Quelle ein (Mindestabstand 10 s). Stillbilder verwenden dieselbe frische Quelle und beheben damit die bisherige HTTP-500-Meldung ohne aktiven Stream.
+- Stream-URLs, Tokens, AES-Keys und Gerätekennungen erscheinen weiterhin nicht in State, Attributen, eigenen Logs, Recorder oder Diagnostics. Alle bestehenden Entity-IDs, Unique-IDs und Automationen bleiben unverändert; es werden keine Geräte-Schreibbefehle eingeführt, die Wallbox bleibt read-only.
+- Für Stillbilder wird Home Assistants `ffmpeg`-Komponente als Manifest-Abhängigkeit geladen; die Signature entspricht dem eingebauten Tuya-Camera-Code und ist seit HA 2025.8 verfügbar. Qualität: 179 Tests grün, Ruff und Formatierung sauber, `git diff --check` sauber. Unabhängige Vorabprüfung durch Claude Sonnet 5.5 mit „FREIGABE MIT AUFLAGEN“; alle Auflagen (Test-Patch, engere Low-Power-Heuristik, Bildpfad ohne Stream-Detach und ffmpeg-Dependency) wurden vor dem Release eingearbeitet.
+
+### English
+
+- Camera live view now uses a freshly allocated RTSP source on every stream start – the same path Home Assistant's own Tuya integration and Xtend Tuya use. The previous local HLS reverse proxy remains but is only a fallback.
+- Battery-powered cameras are detected from `wireless_lowpower=true` or the pair `wireless_awake` + `wireless_powermode` and use HLS (a single power code is not enough): a read-only PyAV probe on 2026-11-28 delivered 911 frames in 61 s there, while RTSP produced only one packet after 30 s. The pan/tilt camera reached 884 frames in 60 s over RTSP but only 239 frames in 622 s over HLS.
+- If the preferred allocation fails, the other stream type is tried automatically and the local proxy is the final fallback. When HA's stream worker reports an unusable source, `Stream.update_source()` installs a freshly allocated source (10 s minimum interval). Still images use the same fresh source, fixing the previous HTTP 500 without an active stream.
+- Stream URLs, tokens, AES keys and device identifiers still never appear in state, attributes, integration logs, recorder or diagnostics. All existing entity IDs, unique IDs and automations remain unchanged; no device write commands are introduced and the wallbox stays read-only.
+- Still images load Home Assistant's `ffmpeg` component as a manifest dependency; the call signature matches the built-in Tuya camera code and is available since HA 2025.8. Quality: 179 tests passing, Ruff and formatting clean, `git diff --check` clean. Independent pre-review by Claude Sonnet 5.5 returned "APPROVED WITH CONDITIONS"; all conditions (test patch, stricter low-power heuristic, image path without stream detach and ffmpeg dependency) were addressed before the release.
+
+---
+
 ## [0.3.1] - 2026-11-28
 
 ### Deutsch

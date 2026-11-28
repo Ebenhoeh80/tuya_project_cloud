@@ -78,7 +78,7 @@ Die Live-Tests haben gezeigt, dass die `v1.0/devices`-Familie für verlinkte Ger
 4. **Entities**: Dynamisch aus `functions`/`status` + DPS-Codes. Plattformen: Switch, Sensor, Light, Climate, Cover, Number, Camera; zusätzliche Shadow-Sensoren aus dem IoT-Core-Thing-Shadow. Entity-Descriptions mit `device_class`, `native_unit_of_measurement`, `EntityCategory`.
 5. **Geräte/Range**: `DeviceInfo` pro Tuya-Gerät mit `identifiers={(DOMAIN, device_id), ("tuya", device_id)}`; der zweite Identifier entspricht der gemeinsamen Tuya-Geräte-ID und wirkt ab HA 2026.8 bei „Verknüpfte Geräte“. Auf älteren HA-Versionen kann er Registry-Einträge verschiedener Tuya-Integrationen zusammenführen. Child Devices wo zutreffend.
 6. **Diagnostics/Repairs**: Redaction von Tokens, Secrets, DPS-Werten mit personenbezogenen Daten; Repairs für Auth-Fehler, falsche Region, fehlende API-Autorisierung.
-7. **Tests**: `pytest-homeassistant-custom-component`, Zwischenstand 0.1.0: 36 Tests grün, 84 % Gesamt-Coverage; Stand 0.3.1: 169 Tests grün, `ruff check`/`format` sauber. Config-Flow, Coordinator, Entity-Mapping, Kamera, Redaction, Fehlerpfade.
+7. **Tests**: `pytest-homeassistant-custom-component`, Zwischenstand 0.1.0: 36 Tests grün, 84 % Gesamt-Coverage; Stand 0.4.0: 179 Tests grün, `ruff check`/`format` sauber (0.3.1: 169). Config-Flow, Coordinator, Entity-Mapping, Kamera, Redaction, Fehlerpfade.
 
 ## 8. Live-Beweis (2026-11-27) – Important rule erfüllt
 
@@ -118,7 +118,7 @@ Der Befehl war wieder **idempotent** (exakt der gelesene Wert wurde zurückgesch
 
 | Prüfung | Ergebnis |
 |---|---|
-| Unit-Tests (Python 3.14, `pytest-homeassistant-custom-component`) | **169 passed** (Stand 0.3.1) |
+| Unit-Tests (Python 3.14, `pytest-homeassistant-custom-component`) | **179 passed** (Stand 0.4.0; 169 in 0.3.1) |
 | `ruff check` / `ruff format --check` | **All checks passed** / sauber |
 | Live-Smoke-Test des eigenen Clients | **Erfolg** (siehe oben) |
 | Live-Probe Shadow/Stream des eigenen Clients | **Erfolg** (8 Geräte, 23 DPS, HLS-Allokation; siehe Abschnitt 11) |
@@ -140,7 +140,7 @@ Beide Stream-Endpunkte sind im offiziellen User Permission Package (Stand 05.11.
 
 **Einordnung:** Die historische HA-Entität `camera.turspion` lieferte 404-Streams und riss am 06.10.2026 das Setup in `setup_error` (ADR 0009 im SecondBrain-Wiki). Die damalige Ursache bleibt unbelegt; die OpenAPI liefert den Stream mit dem Projekt-Token jetzt aber echt. Eine `camera`-Plattform ist für diese Integration damit machbar und in 0.2.0 **implementiert** (siehe Abschnitt 11).
 
-**Umsetzung:** Seit 0.3.0 liegt ein lokaler HLS-Re-Proxy davor: `stream_source()` gibt eine stabile lokale `index.m3u8` mit opakem Token zurück, während der Proxy signierte URLs, AES-Keys und Segmente im Speicher hält und erneuert. Meldet der HA-Stream-Worker eine unbrauchbare Quelle, verwirft der Proxy die Allokation und die Kamera ruft `Stream.update_source()` mit derselben lokalen URL auf; HA und go2rtc retryen damit nicht eine abgelaufene Tuya-URL. WebRTC wird nicht angeboten; optional go2rtc-`tuya://` für Gegensprechen.
+**Umsetzung:** Seit 0.4.0 allokiert `stream_source()` bei jedem Streamstart eine frische Quelle. Die Pan/Tilt-Kamera nutzt RTSP (rein lesende PyAV-Probe am 28.11.2026: 884 Frames in 60 s), der batteriebetriebene Türspion nutzt HLS, erkannt über `wireless_lowpower=true` (zusätzlich `wireless_awake` und `wireless_powermode`; ein einzelner Power-Code genügt nicht) (911 Frames in 61 s; RTSP lieferte dort nach 30 s nur ein Packet). Der lokale HLS-Re-Proxy aus 0.3.0 bleibt als letzter Fallback, wenn beide Allokationen scheitern. Bei einer vom Worker gemeldeten unbrauchbaren Quelle setzt `Stream.update_source()` eine neu allokierte Quelle ein (Mindestabstand 10 s). WebRTC wird nicht angeboten; optional go2rtc-`tuya://` für Gegensprechen.
 
 Nachweis im SecondBrain-Wiki: `wiki/fragen/2026-11-27-tuya-tuer-spion-livebild.md` (nicht Teil dieses Repos).
 
@@ -163,7 +163,7 @@ STREAM allocated=True m3u8_in_url=True query_keys=1
 |---|---|
 | `GET /v2.0/cloud/thing/{id}/shadow/properties` über `TuyaOpenApi.async_get_thing_shadow()` | `23` Properties, `16` gemappte Sensoren |
 | `POST /v1.0/devices/{id}/stream/actions/allocate` über `TuyaOpenApi.async_allocate_stream()` | URL mit `.m3u8` und Signatur-Query, nur im Speicher |
-| `camera`-Plattform | HLS über lokalen Re-Proxy und stabile `stream_source()`, kein WebRTC |
+| `camera`-Plattform | RTSP mit frischer Allokation, HLS für Low-Power-Kameras, lokaler Re-Proxy als Fallback, kein WebRTC |
 | Redaction | Stream-URL und `m3u8` in Diagnostics maskiert, `_unrecorded_attributes = frozenset(MATCH_ALL)` |
 
 **Grenzen:** Die Skalierung der `x_*`-Werte folgt Community-Referenzen (evcc/tuya-local), nicht dem Hersteller `(unbelegt im Detail)`. `d`/`t` aus `x_metrics` und `x_charge_history` bleiben wegen unklarer Einheit unbewertet. Es werden keine Schreibbefehle an die Wallbox gesendet. Die Installation in einer laufenden HA-Instanz ist auch für 0.3.0 verifiziert: HACS-Upgrade, bestätigter Neustart, Config Entry `loaded`, **13/13 Live-Checks grün** mit 85/85 unveränderten Entity-IDs und Unique-IDs gegenüber 0.2.8 (0 fehlend, 0 neu), 0 `unavailable`, 0 `unknown`, 0 Repairs und keinen neuen Stream-Fehlern. Der Proxy ist zusätzlich in einer End-to-End-Probe beider Kameras je 180 Sekunden mit PyAV und ffmpeg/go2rtc-kompatibel fehlerfrei gelaufen; ein 10-Minuten-Soak je Kamera über die volle `RESOURCE_TTL` von 600 s endete mit `exit=0` und leerer Fehlerliste. Eine aktive Wiedergabe im HA-Frontend bleibt in dieser Automatisierung `(unbelegt)`.

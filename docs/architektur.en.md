@@ -23,7 +23,7 @@ Home Assistant custom integration that uses **exclusively the Tuya OpenAPI** wit
 | Diagnostics with redaction | Tokens, secrets and personal DPS values must never appear in diagnostics. |
 | IoT Core thing shadow for charger data | The classic `/status`, `/functions` and `/specifications` return no values for the charger; only the thing shadow is authorized and returns 23 DPS. |
 | Flat sensors instead of JSON attributes | `x_metrics` and `x_charger_info` are split in `shadow.py`, scaled and exposed as separate sensors with `device_class`/unit/`state_class`. |
-| Camera with a local HLS reverse proxy | `stream_source()` returns a stable local URL with an opaque token. The proxy keeps signed URLs, AES keys and segments in memory and never writes them to state/logs/diagnostics. When the worker reports a failure, it drops the allocation and calls `Stream.update_source()` with the same local URL (10 s minimum interval), so the go2rtc registry stays stable. |
+| Camera with fresh RTSP and HLS allocations | `stream_source()` allocates a new source per stream start: RTSP for the pan/tilt camera, HLS for cameras with `wireless_lowpower=true` or the pair `wireless_awake` + `wireless_powermode`. On failure the other type and then the local HLS reverse proxy with an opaque token are tried. The proxy keeps signed URLs, AES keys and segments in memory only. When the worker reports an unusable source, `Stream.update_source()` installs a freshly allocated source (10 s minimum interval). No stream URL reaches state, logs or diagnostics. Still images call `ffmpeg.async_get_image()` through the `ffmpeg` manifest dependency. |
 | `OptionsFlowWithReload` | Shadow and camera options require rebuilding platforms; HA reloads the entry after saving. |
 
 ## 3. Data flow
@@ -41,7 +41,7 @@ Config flow (access_id, access_secret, region)
         ├─ GET /v1.0/devices/{id}/specifications      → types/constraints
         ├─ POST /v1.0/devices/{id}/commands           → control
         ├─ GET /v2.0/cloud/thing/{id}/shadow/properties → charger data (every 60 s, immediate retry on empty response)
-        └─ POST /v1.0/devices/{id}/stream/actions/allocate → short-lived HLS URL
+        └─ POST /v1.0/devices/{id}/stream/actions/allocate → short-lived RTSP or HLS URL
         │
         ▼
   TuyaProjectCloudCoordinator (DataUpdateCoordinator)
@@ -64,8 +64,8 @@ Config flow (access_id, access_secret, region)
 | `config_flow.py` | `user` step (ID, secret, region), duplicate check, `reauth`, options (interval, shadow, camera) with reload |
 | `coordinator.py` | `DataUpdateCoordinator[dict[str, TuyaDevice]]`, device mapping, 60 s shadow refresh, stale devices→unavailable, errors→repairs/reauth |
 | `entity.py` | `TuyaProjectCloudEntity` (DPS) and `TuyaShadowEntity` (shadow): `device_info`, `unique_id`, `available` |
-| `switch.py`, `sensor.py`, `light.py`, `climate.py`, `cover.py`, `number.py`, `camera.py` | Dynamic entities from DPS and shadow codes or HLS stream |
-| `stream_proxy.py` | Local HLS reverse proxy: opaque tokens, rewrite of key/segment URLs, TTL caches, HA views and removal of all token routes and proxy state on unload |
+| `switch.py`, `sensor.py`, `light.py`, `climate.py`, `cover.py`, `number.py`, `camera.py` | Dynamic entities from DPS and shadow codes or RTSP/HLS live stream |
+| `stream_proxy.py` | Final fallback: local HLS reverse proxy with opaque tokens, rewrite of key/segment URLs, TTL caches, HA views and removal of all token routes and proxy state on unload |
 | `diagnostics.py` | Redaction of token/secret/`local_key`/stream URL/`m3u8`; shadow codes only, no values |
 | `repairs.py` | Auth, region, API and IoT Core authorization issues |
 | `strings.json`, `translations/{de,en}.json` | UI texts and repair descriptions |
@@ -116,7 +116,7 @@ class TuyaDevice:
 | cover | `control`, `percent_control`, `position`, category `cl`/`curtain` |
 | number | Integer functions with `min`/`max`/`step` not already used by light/climate/cover |
 | sensor (shadow) | Devices with `x_work_state`, `x_metrics`, `x_charger_info` etc.; 16 mapped sensors with a `shadow_` prefix in the unique ID, added dynamically when data arrives |
-| camera | Category `sp` or functions containing `stream`; HLS via `stream_source()` |
+| camera | Category `sp` or functions containing `stream`; RTSP via `stream_source()`, HLS for low-power devices and as fallback |
 
 The four verified DPS integer codes (`cur_power`, `cur_voltage`, `cur_current`, `add_ele`) use `value / 10**scale` with `scale` from the device specifications; units and device/state classes are fixed and match the original `tuya` integration. The interpretation is captured at setup so metadata and values cannot drift; later specification changes require a reload. Without a reliable specification the raw value is kept. The `x_*` shadow scaling (voltage/current/power/energy from `x_metrics` ×0.1, `x_charger_info.e` ×0.1) still comes from community references and is `(unverified in detail)`; durations and raw counters with ambiguous units are omitted. Readable status codes with matching hints (`battery`, `temperature`, `humidity`, …) are created as `sensor` with `EntityCategory.DIAGNOSTIC`. Completely unknown codes are neither guessed nor controlled.
 
@@ -131,7 +131,7 @@ The four verified DPS integer codes (`cur_power`, `cur_voltage`, `cur_current`, 
 | Timeout / 5xx / 429 | `ConfigEntryNotReady` at setup, `UpdateFailed` in coordinator, backoff |
 | Wrong region → empty list | Repair issue "region_mismatch" |
 | Stream allocation failed | `stream_source()` returns `None`; setup and other entities stay healthy |
-| Signed URL expired / invalid HLS data | The proxy drops the allocation; the camera calls `stream.update_source()` with the same local URL (10 s minimum interval), so go2rtc does not need to re-register the source |
+| Source expired / invalid stream data | The camera allocates again and calls `stream.update_source()` with the fresh source (10 s minimum interval) |
 
 ## 8. Tests
 
@@ -144,7 +144,7 @@ The four verified DPS integer codes (`cur_power`, `cur_voltage`, `cur_current`, 
 - `tests/test_stream_proxy.py`: URL rewrite without secrets, TTL cache, forced reallocation, unknown tokens and 404 behaviour of the views.
 - `tests/test_diagnostics.py`: redaction including stream URL/`m3u8`, shadow codes only in output.
 
-Current state: 169 tests green, `ruff check` and `ruff format --check` clean (Python 3.14). The minimum version is Home Assistant 2025.8.0 because `OptionsFlowWithReload` was introduced there. Since 0.3.1 the device metadata also carries the shared `tuya` identifier so HA groups entries from `tuya_project_cloud`, `tuya` and Xtend Tuya under "Linked devices". `pytest.ini` sets `asyncio_mode = auto`, `strict-markers` and `strict-config`; `validate.yml` uses concurrency and timeouts. Camera tests additionally need `PyTurboJPEG` because HA imports `homeassistant.components.camera`.
+Current state: 179 tests green, `ruff check` and `ruff format --check` clean (Python 3.14). The minimum version is Home Assistant 2025.8.0 because `OptionsFlowWithReload` was introduced there. Since 0.3.1 the device metadata also carries the shared `tuya` identifier so HA groups entries from `tuya_project_cloud`, `tuya` and Xtend Tuya under "Linked devices". `pytest.ini` sets `asyncio_mode = auto`, `strict-markers` and `strict-config`; `validate.yml` uses concurrency and timeouts. Camera tests additionally need `PyTurboJPEG` for `homeassistant.components.camera` and `ha-ffmpeg` for the `ffmpeg` manifest dependency.
 
 ## 9. Iteration plan
 
