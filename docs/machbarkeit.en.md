@@ -76,9 +76,9 @@ The live tests showed that the `v1.0/devices` family works for linked devices. B
 2. **Client**: Own async HTTP client (signature per current docs) or wrapper around `tuya-connector-python` via executor. No `tuya_sharing` in the project-only path.
 3. **Data model**: `entry.runtime_data` with client + `DataUpdateCoordinator` (polling, since no push channel). Push (Pulsar) in a later phase.
 4. **Entities**: Dynamic from `functions`/`status` + DPS codes. Platforms: switch, sensor, light, climate, cover, number, camera; additional shadow sensors from the IoT Core thing shadow. Entity descriptions with `device_class`, `native_unit_of_measurement`, `EntityCategory`.
-5. **Device/range**: `DeviceInfo` per Tuya device, `identifiers={(DOMAIN, device_id)}`; child devices where applicable.
+5. **Device/range**: `DeviceInfo` per Tuya device with `identifiers={(DOMAIN, device_id), ("tuya", device_id)}`; the second identifier matches the shared Tuya device ID and affects "Linked devices" from HA 2026.8 onward. On older HA versions it can merge registry entries from different Tuya integrations. Child devices where applicable.
 6. **Diagnostics/repairs**: Redaction of tokens, secrets, DPS values with personal data; repairs for auth errors, wrong region, missing API authorization.
-7. **Tests**: `pytest-homeassistant-custom-component`, 0.1.0 intermediate state: 36 tests green, 84 % overall coverage; 0.3.0 state: 168 tests green, `ruff check`/`format` clean. Config flow, coordinator, entity mapping, camera, redaction, error paths.
+7. **Tests**: `pytest-homeassistant-custom-component`, 0.1.0 intermediate state: 36 tests green, 84 % overall coverage; 0.3.1 state: 169 tests green, `ruff check`/`format` clean. Config flow, coordinator, entity mapping, camera, redaction, error paths.
 
 ## 8. Live proof (2026-11-27) – important rule fulfilled
 
@@ -118,7 +118,7 @@ The command was again **idempotent** (exact read value written back). This prove
 
 | Check | Result |
 |---|---|
-| Unit tests (Python 3.14, `pytest-homeassistant-custom-component`) | **168 passed** (0.3.0) |
+| Unit tests (Python 3.14, `pytest-homeassistant-custom-component`) | **169 passed** (0.3.1) |
 | `ruff check` / `ruff format --check` | **All checks passed** / clean |
 | Live smoke test of own client | **Success** (see above) |
 | Live shadow/stream probe of own client | **Success** (8 devices, 23 DPS, HLS allocation; see section 11) |

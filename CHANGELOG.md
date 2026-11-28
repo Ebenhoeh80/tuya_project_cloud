@@ -1,5 +1,21 @@
 # Changelog / Änderungen
 
+## [0.3.1] - 2026-11-28
+
+### Deutsch
+
+- Geräte aus `tuya_project_cloud` erscheinen ab Home Assistant 2026.8 in Home Assistants Abschnitt „Verknüpfte Geräte“ gemeinsam mit den Einträgen der Original-`tuya`-Integration und von Xtend Tuya. Ursache war, dass die Registry-Einträge bisher nur den eigenen Identifier `tuya_project_cloud` trugen, während die beiden anderen Integrationen den gemeinsamen Identifier `tuya` verwenden.
+- `tuya_device_info()` ergänzt `("tuya", <Geräte-ID>)` zusätzlich zum bestehenden `("tuya_project_cloud", <Geräte-ID>)`. HA verknüpft Registry-Einträge ab 2026.8 über gemeinsame Identifier beziehungsweise Connections; auf älteren Versionen kann der gemeinsame Identifier Registry-Einträge verschiedener Tuya-Integrationen zusammenführen. Entity-IDs, Unique-IDs, Automationen und Geräte-Schreibbefehle bleiben unverändert; die Wallbox bleibt read-only.
+- Qualität: 169 Tests grün, Ruff und Formatierung sauber. Die Live-Verifikation nach HACS-Upgrade und bestätigtem Neustart erfolgt nach dem Release.
+
+### English
+
+- Devices from `tuya_project_cloud` now appear in Home Assistant's "Linked devices" section together with the entries from the original `tuya` integration and Xtend Tuya, starting with Home Assistant 2026.8. Previously the registry entries carried only the integration's own `tuya_project_cloud` identifier, while the other two integrations share the `tuya` identifier.
+- `tuya_device_info()` adds `("tuya", <device ID>)` alongside the existing `("tuya_project_cloud", <device ID>)`. From 2026.8 on, HA links registry entries that share an identifier or connection; on older versions the shared identifier can merge registry entries from different Tuya integrations. Entity IDs, unique IDs, automations and device write commands remain unchanged; the wallbox stays read-only.
+- Quality: 169 tests passing, Ruff and formatting clean. Live verification after a HACS upgrade and confirmed restart will follow the release.
+
+---
+
 ## [0.3.0] - 2026-11-27
 
 ### Deutsch

@@ -9,7 +9,7 @@ from homeassistant.helpers.entity import EntityDescription
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .api import TuyaDevice
-from .const import DOMAIN
+from .const import DOMAIN, TUYA_DEVICE_DOMAIN
 from .coordinator import TuyaProjectCloudCoordinator
 from .shadow import ShadowSensorDescription, shadow_firmware, shadow_value
 
@@ -17,7 +17,10 @@ from .shadow import ShadowSensorDescription, shadow_firmware, shadow_value
 def tuya_device_info(device: TuyaDevice) -> DeviceInfo:
     """Build stable device metadata, adding firmware when the shadow has it."""
     info = DeviceInfo(
-        identifiers={(DOMAIN, device.id)},
+        identifiers={
+            (DOMAIN, device.id),
+            (TUYA_DEVICE_DOMAIN, device.id),
+        },
         name=device.name,
         manufacturer="Tuya",
         model=device.product_id,

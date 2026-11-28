@@ -26,6 +26,7 @@ from custom_components.tuya_project_cloud.api import (
 from custom_components.tuya_project_cloud.climate import (
     async_setup_entry as climate_setup,
 )
+from custom_components.tuya_project_cloud.const import DOMAIN, TUYA_DEVICE_DOMAIN
 from custom_components.tuya_project_cloud.cover import async_setup_entry as cover_setup
 from custom_components.tuya_project_cloud.entity import tuya_device_info
 from custom_components.tuya_project_cloud.light import async_setup_entry as light_setup
@@ -490,6 +491,13 @@ async def test_dps_entities_use_readable_translation_keys() -> None:
         "dev1_mystery_switch",
     }
     assert "dev1_volume" in {entity.unique_id for entity in numbers}
+
+
+def test_device_info_shares_identifier_with_tuya_integrations() -> None:
+    """The device registry links this device to tuya and Xtend Tuya."""
+    info = tuya_device_info(_device())
+    assert (DOMAIN, "dev1") in info["identifiers"]
+    assert (TUYA_DEVICE_DOMAIN, "dev1") in info["identifiers"]
 
 
 def test_device_info_contains_firmware_from_shadow() -> None:

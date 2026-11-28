@@ -11,7 +11,7 @@ from custom_components.tuya_project_cloud.api import (
     TuyaFunction,
     TuyaShadowProperty,
 )
-from custom_components.tuya_project_cloud.const import DOMAIN
+from custom_components.tuya_project_cloud.const import DOMAIN, TUYA_DEVICE_DOMAIN
 from custom_components.tuya_project_cloud.diagnostics import (
     _redact,
     async_get_config_entry_diagnostics,
@@ -89,7 +89,10 @@ async def test_device_diagnostics_pseudonymizes_id(hass, mock_config_entry) -> N
     }
     mock_config_entry.runtime_data = coordinator
     device = MagicMock()
-    device.identifiers = {(DOMAIN, "dev-secret-123")}
+    device.identifiers = {
+        (DOMAIN, "dev-secret-123"),
+        (TUYA_DEVICE_DOMAIN, "dev-secret-123"),
+    }
     result = await async_get_device_diagnostics(hass, mock_config_entry, device)
     text = str(result)
     assert "dev-secret-123" not in text

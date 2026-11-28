@@ -144,7 +144,7 @@ The four verified DPS integer codes (`cur_power`, `cur_voltage`, `cur_current`, 
 - `tests/test_stream_proxy.py`: URL rewrite without secrets, TTL cache, forced reallocation, unknown tokens and 404 behaviour of the views.
 - `tests/test_diagnostics.py`: redaction including stream URL/`m3u8`, shadow codes only in output.
 
-Current state: 168 tests green, `ruff check` and `ruff format --check` clean (Python 3.14). The minimum version is Home Assistant 2025.8.0 because `OptionsFlowWithReload` was introduced there. `pytest.ini` sets `asyncio_mode = auto`, `strict-markers` and `strict-config`; `validate.yml` uses concurrency and timeouts. Camera tests additionally need `PyTurboJPEG` because HA imports `homeassistant.components.camera`.
+Current state: 169 tests green, `ruff check` and `ruff format --check` clean (Python 3.14). The minimum version is Home Assistant 2025.8.0 because `OptionsFlowWithReload` was introduced there. Since 0.3.1 the device metadata also carries the shared `tuya` identifier so HA groups entries from `tuya_project_cloud`, `tuya` and Xtend Tuya under "Linked devices". `pytest.ini` sets `asyncio_mode = auto`, `strict-markers` and `strict-config`; `validate.yml` uses concurrency and timeouts. Camera tests additionally need `PyTurboJPEG` because HA imports `homeassistant.components.camera`.
 
 ## 9. Iteration plan
 

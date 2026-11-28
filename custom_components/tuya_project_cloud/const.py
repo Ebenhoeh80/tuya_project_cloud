@@ -6,6 +6,10 @@ from datetime import timedelta
 
 DOMAIN = "tuya_project_cloud"
 
+# Shared device-registry identifier used by the original Tuya integration and
+# Xtend Tuya. HA lists devices with a common identifier under "Linked devices".
+TUYA_DEVICE_DOMAIN = "tuya"
+
 CONF_ACCESS_ID = "access_id"
 CONF_ACCESS_SECRET = "access_secret"
 CONF_REGION = "region"
