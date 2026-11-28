@@ -38,6 +38,9 @@ PLAYLIST_PATH = f"/api/{DOMAIN}/stream"
 # 40 s in live probes, so renew before that even if the URL still responds.
 ALLOCATION_TTL = 30.0
 RESOURCE_TTL = 600.0
+# Rebasing copies a whole segment into memory. Keep bodies only as long as a
+# client may replay the last few chunks; URLs stay available for RESOURCE_TTL.
+BODY_TTL = 60.0
 ALLOCATION_FAILURE_COOLDOWN = 10.0
 FETCH_TIMEOUT = ClientTimeout(total=15)
 FALLBACK_BASE_URL = "http://localhost:8123"
@@ -83,6 +86,8 @@ class _PlaylistState:
     timestamp_offset: int = 0
     next_dts: int | None = None
     rebased_generation: int = 0
+    offsets: dict[int, int] = field(default_factory=dict)
+    generation_next: dict[int, int] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -113,6 +118,7 @@ class _Resource:
     created: float
     content_type: str = "video/mp2t"
     body: bytes | None = None
+    body_created: float | None = None
 
 
 class TuyaStreamProxy:
@@ -289,9 +295,21 @@ class TuyaStreamProxy:
             if now - allocation.created < ALLOCATION_TTL
         }
         self._resources = {
-            key: resource
+            key: (
+                replace(resource, body=None, body_created=None)
+                if resource.body is not None
+                and resource.body_created is not None
+                and now - resource.body_created >= BODY_TTL
+                else resource
+            )
             for key, resource in self._resources.items()
             if now - resource.created < RESOURCE_TTL
+        }
+        valid_resources = set(self._resources)
+        self._segment_meta = {
+            key: meta
+            for key, meta in self._segment_meta.items()
+            if key in valid_resources
         }
         self._failures = {
             token: failed
@@ -348,7 +366,6 @@ class TuyaStreamProxy:
         upstream_key_url = ""
         key_method = ""
         key_iv = ""
-        upstream_sequence = 0
         duration = "2"
         discontinuity = False
         candidates: list[tuple[str, str, str, bool]] = []
@@ -361,11 +378,6 @@ class TuyaStreamProxy:
                     target_duration = int(line.split(":", 1)[1])
                 except ValueError:
                     target_duration = 3
-            elif line.startswith("#EXT-X-MEDIA-SEQUENCE:"):
-                try:
-                    upstream_sequence = int(line.split(":", 1)[1])
-                except ValueError:
-                    upstream_sequence = 0
             elif line.startswith("#EXT-X-KEY:"):
 
                 def rewrite(match: re.Match[str]) -> str:
@@ -400,13 +412,12 @@ class TuyaStreamProxy:
         if generation_changed:
             state.pending_discontinuity = True
         segment_iv: bytes | None = None
-        if upstream_key_url and key_method in {"AES-128", "AES-128-CBC"}:
+        if upstream_key_url and key_method in {"AES-128", "AES-128-CBC"} and key_iv:
+            # HLS short IVs are left-padded with zeroes. Without an explicit
+            # IV we must not guess one: the local window changes MEDIA-SEQUENCE.
+            iv_hex = key_iv[2:].rjust(32, "0")
             try:
-                segment_iv = (
-                    bytes.fromhex(key_iv[2:])
-                    if key_iv
-                    else upstream_sequence.to_bytes(16, "big")
-                )
+                segment_iv = bytes.fromhex(iv_hex)
             except ValueError:
                 segment_iv = None
         fresh: list[tuple[tuple[int, str], _Segment]] = []
@@ -495,40 +506,53 @@ class TuyaStreamProxy:
 
     async def _rebase_segment(
         self, token: str, encrypted: bytes, meta: _SegmentMeta
-    ) -> bytes:
-        """Shift a segment's timestamps onto the previous session's timeline."""
+    ) -> tuple[bytes, bool]:
+        """Shift a segment onto the previous timeline; report if cacheable."""
+        state = self._playlist_state.get(token)
+        if state is None:
+            return encrypted, False
+        if (
+            meta.generation < state.rebased_generation
+            and meta.generation not in state.offsets
+        ):
+            return encrypted, False
         key_resource = await self._fetch(meta.key_url)
         if key_resource is None:
-            return encrypted
+            _LOGGER.debug("Cannot fetch HLS key for timestamp rebasing")
+            return encrypted, False
         key = key_resource[0]
         clear = decrypt(encrypted, key, meta.iv)
         if clear is None:
-            return encrypted
+            _LOGGER.debug("Cannot decrypt HLS segment for timestamp rebasing")
+            return encrypted, False
         first, last = timestamps(clear)
         if first is None or last is None:
-            return encrypted
+            _LOGGER.debug("Cannot read HLS timestamps for rebasing")
+            return encrypted, False
         lock = self._rebase_locks.setdefault(token, asyncio.Lock())
         async with lock:
             state = self._playlist_state.get(token)
             if state is None:
-                return encrypted
-            if (
-                meta.generation != state.rebased_generation
-                and state.next_dts is not None
-            ):
-                offset = state.next_dts - first
-            elif state.next_dts is not None:
-                offset = state.timestamp_offset
-            else:
-                offset = 0
+                return encrypted, False
+            if (offset := state.offsets.get(meta.generation)) is None:
+                if meta.generation < state.rebased_generation:
+                    return encrypted, False
+                offset = state.next_dts - first if state.next_dts is not None else 0
+                state.offsets[meta.generation] = offset
             patched = shift(clear, offset)
             state.timestamp_offset = offset
-            state.rebased_generation = meta.generation
+            state.rebased_generation = max(meta.generation, state.rebased_generation)
             _, patched_last = timestamps(patched)
             if patched_last is not None:
-                state.next_dts = patched_last + FRAME_TICKS
+                advanced = patched_last + FRAME_TICKS
+                state.generation_next[meta.generation] = max(
+                    state.generation_next.get(meta.generation, 0), advanced
+                )
+                state.next_dts = max(state.next_dts or 0, advanced)
         rewritten = encrypt(patched, key, meta.iv)
-        return rewritten if rewritten is not None else encrypted
+        if rewritten is None:
+            return encrypted, False
+        return rewritten, True
 
     async def resource(
         self, token: str, kind: str, resource_id: str
@@ -536,14 +560,20 @@ class TuyaStreamProxy:
         """Return a fetched segment or key by its opaque identifier."""
         cache_key = f"{token}:{kind}:{resource_id}"
         resource = self._resources.get(cache_key)
-        if resource is None or time.monotonic() - resource.created >= RESOURCE_TTL:
+        now = time.monotonic()
+        if resource is None or now - resource.created >= RESOURCE_TTL:
             return None
-        if resource.body is not None:
+        if (
+            resource.body is not None
+            and resource.body_created is not None
+            and now - resource.body_created < BODY_TTL
+        ):
             return resource.body, {"Content-Type": resource.content_type}
         fetched = await self._fetch(resource.url)
         if fetched is None:
             return None
         body, headers = fetched
+        cacheable = True
         # A real encrypted TS segment has many packets; tiny fixtures are left
         # untouched so the proxy keeps working with opaque test data.
         if (
@@ -551,12 +581,17 @@ class TuyaStreamProxy:
             and (meta := self._segment_meta.get(cache_key)) is not None
             and len(body) >= 188 * 2
         ):
-            body = await self._rebase_segment(token, body, meta)
-        self._resources[cache_key] = replace(
-            resource,
-            body=body,
-            content_type=headers.get("Content-Type", resource.content_type),
-        )
+            body, cacheable = await self._rebase_segment(token, body, meta)
+        # A concurrent unload or invalidation must not resurrect old state.
+        if token not in self._routes or cache_key not in self._resources:
+            return None
+        if cacheable:
+            self._resources[cache_key] = replace(
+                resource,
+                body=body,
+                body_created=time.monotonic(),
+                content_type=headers.get("Content-Type", resource.content_type),
+            )
         return body, headers
 
 

@@ -15,6 +15,8 @@ from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
 _PTS_MODULO = 1 << 33
 _PACKET_SIZE = 188
+# These PES stream IDs have no optional header and therefore no PTS/DTS.
+_PES_WITHOUT_TIMESTAMPS = frozenset({0xBC, 0xBE, 0xBF})
 
 
 def decrypt(data: bytes, key: bytes, iv: bytes) -> bytes | None:
@@ -47,13 +49,13 @@ def _read_timestamp(data: bytes, offset: int) -> int | None:
 
 
 def _write_timestamp(data: bytearray, offset: int, value: int) -> None:
-    """Encode a 33-bit MPEG-TS PTS/DTS field with its marker bits."""
+    """Encode a 33-bit PTS/DTS field, preserving its prefix and marker bits."""
     value %= _PTS_MODULO
-    data[offset] = ((value >> 30) & 0x07) << 1 | 0x21
+    data[offset] = (data[offset] & 0xF0) | (((value >> 30) & 0x07) << 1) | 0x01
     data[offset + 1] = (value >> 22) & 0xFF
-    data[offset + 2] = ((value >> 15) & 0x7F) << 1 | 0x01
+    data[offset + 2] = (data[offset + 2] & 0x01) | (((value >> 15) & 0x7F) << 1)
     data[offset + 3] = (value >> 7) & 0xFF
-    data[offset + 4] = (value & 0x7F) << 1 | 0x01
+    data[offset + 4] = (data[offset + 4] & 0x01) | ((value & 0x7F) << 1)
 
 
 def _read_pcr(data: bytes, offset: int) -> int | None:
@@ -79,8 +81,30 @@ def _write_pcr(data: bytearray, offset: int, value: int) -> None:
     data[offset + 4] = (data[offset + 4] & 0x01) | ((value & 0x01) << 7)
 
 
+def _pes_timestamp_positions(packet: bytes, index: int) -> tuple[int, ...]:
+    """Return in-packet offsets of PTS/DTS fields when a PES header fits."""
+    if index + 9 > _PACKET_SIZE or packet[index : index + 3] != b"\x00\x00\x01":
+        return ()
+    if packet[index + 3] in _PES_WITHOUT_TIMESTAMPS:
+        return ()
+    if packet[index + 6] & 0xC0 != 0x80:
+        return ()
+    flags = packet[index + 7]
+    field = index + 9
+    if flags & 0xC0 == 0xC0:
+        return (field, field + 5) if field + 10 <= _PACKET_SIZE else ()
+    if flags & 0x80:
+        return (field,) if field + 5 <= _PACKET_SIZE else ()
+    return ()
+
+
+def _is_later(value: int, previous: int) -> bool:
+    """Compare 33-bit timestamps across the wraparound boundary."""
+    return ((value - previous) % _PTS_MODULO) < (_PTS_MODULO // 2)
+
+
 def timestamps(data: bytes) -> tuple[int | None, int | None]:
-    """Return the first timestamp and the last timestamp of a clear segment."""
+    """Return the first DTS and the last timestamp of a clear segment."""
     first_dts: int | None = None
     last_dts: int | None = None
     first_pcr: int | None = None
@@ -105,21 +129,12 @@ def timestamps(data: bytes) -> tuple[int | None, int | None]:
             index = 5 + length
         if not has_payload or not (packet[1] & 0x40):
             continue
-        flags_offset = index + 7
-        if flags_offset >= _PACKET_SIZE or packet[index : index + 3] != b"\x00\x00\x01":
+        positions = _pes_timestamp_positions(packet, index)
+        if not positions:
             continue
-        flags = packet[flags_offset]
-        field = index + 9
-        if flags & 0xC0 == 0xC0:
-            if field + 10 > _PACKET_SIZE:
-                continue
-            value = _read_timestamp(packet, field + 5)
-        elif flags & 0x80:
-            if field + 5 > _PACKET_SIZE:
-                continue
-            value = _read_timestamp(packet, field)
-        else:
-            continue
+        # Prefer DTS over PTS for PTS+DTS packets: rebasing uses presentation
+        # order, and HA validates DTS continuity.
+        value = _read_timestamp(packet, positions[-1])
         if value is None:
             continue
         if first_dts is None:
@@ -127,7 +142,7 @@ def timestamps(data: bytes) -> tuple[int | None, int | None]:
         last_dts = value
     first = first_dts if first_dts is not None else first_pcr
     last = last_dts
-    if last_pcr is not None and (last is None or last_pcr > last):
+    if last_pcr is not None and (last is None or _is_later(last_pcr, last)):
         last = last_pcr
     return first, last
 
@@ -156,18 +171,7 @@ def shift(data: bytes, offset: int) -> bytes:
             index = 5 + length
         if not has_payload or not (packet[1] & 0x40):
             continue
-        flags_offset = index + 7
-        if flags_offset >= _PACKET_SIZE or packet[index : index + 3] != b"\x00\x00\x01":
-            continue
-        flags = packet[flags_offset]
-        field = index + 9
-        if flags & 0xC0 == 0xC0:
-            positions = (field, field + 5) if field + 10 <= _PACKET_SIZE else ()
-        elif flags & 0x80:
-            positions = (field,) if field + 5 <= _PACKET_SIZE else ()
-        else:
-            positions = ()
-        for position in positions:
+        for position in _pes_timestamp_positions(packet, index):
             value = _read_timestamp(packet, position)
             if value is not None:
                 _write_timestamp(output, start + position, value + delta)

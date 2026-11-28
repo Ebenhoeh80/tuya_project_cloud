@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import logging
 import re
+import time
+from dataclasses import replace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -18,6 +20,8 @@ from custom_components.tuya_project_cloud.hls_ts import (
     timestamps,
 )
 from custom_components.tuya_project_cloud.stream_proxy import (
+    BODY_TTL,
+    RESOURCE_TTL,
     TuyaKeyView,
     TuyaPlaylistView,
     TuyaSegmentView,
@@ -743,3 +747,142 @@ async def test_encrypted_segments_get_continuous_timestamps_across_allocations()
     assert first_last is not None and second_first is not None
     assert second_first > first_last
     assert second_first - first_last < 90000
+
+
+@pytest.mark.asyncio
+async def test_rebased_segment_bodies_are_bounded() -> None:
+    """Bodies expire quickly; expired resources drop their metadata too."""
+    proxy, token, _ = _proxy()
+    playlist = PLAYLIST.replace("IV=0x1234", "IV=0x101112131415161718191a1b1c1d1e1f")
+    segment = _encrypted_segment(31.5)
+    fetches = 0
+
+    async def fake_fetch(url: str) -> tuple[bytes, dict[str, str]] | None:
+        nonlocal fetches
+        if url == UPSTREAM:
+            return playlist.encode(), {}
+        if "key.bin" in url:
+            return bytes(range(16)), {}
+        if "segment1.ts" in url:
+            fetches += 1
+            return segment, {}
+        return None
+
+    with (
+        patch.object(proxy, "_fetch", side_effect=fake_fetch),
+        patch(
+            "custom_components.tuya_project_cloud.stream_proxy.get_url",
+            return_value="http://ha.invalid:8123",
+        ),
+    ):
+        text = await proxy.playlist(token)
+        assert text is not None
+        resource_id = _segment_paths(text)[0].rsplit("/", 1)[-1].removesuffix(".ts")
+        key = f"{token}:segment:{resource_id}"
+        first = await proxy.resource(token, "segment", resource_id)
+        second = await proxy.resource(token, "segment", resource_id)
+        assert first is not None and second is not None
+        assert fetches == 1
+        assert second[0] == first[0]
+
+        proxy._resources[key] = replace(
+            proxy._resources[key], body_created=time.monotonic() - BODY_TTL - 1
+        )
+        proxy._prune()
+        assert proxy._resources[key].body is None
+        await proxy.resource(token, "segment", resource_id)
+        assert fetches == 2
+
+        proxy._resources[key] = replace(
+            proxy._resources[key], created=time.monotonic() - RESOURCE_TTL - 1
+        )
+        proxy._prune()
+        assert key not in proxy._resources
+        assert key not in proxy._segment_meta
+
+
+@pytest.mark.asyncio
+async def test_failed_rebase_is_not_cached() -> None:
+    """A segment that could not be rebased must be retried on the next read."""
+    proxy, token, _ = _proxy()
+    segment = _encrypted_segment(1.5)
+
+    async def fake_fetch(url: str) -> tuple[bytes, dict[str, str]] | None:
+        if url == UPSTREAM:
+            return PLAYLIST.encode(), {}
+        if "segment1.ts" in url:
+            return segment, {}
+        return None
+
+    with (
+        patch.object(proxy, "_fetch", side_effect=fake_fetch),
+        patch.object(proxy, "_rebase_segment", return_value=(segment, False)),
+        patch(
+            "custom_components.tuya_project_cloud.stream_proxy.get_url",
+            return_value="http://ha.invalid:8123",
+        ),
+    ):
+        text = await proxy.playlist(token)
+        assert text is not None
+        resource_id = _segment_paths(text)[0].rsplit("/", 1)[-1].removesuffix(".ts")
+        body = await proxy.resource(token, "segment", resource_id)
+
+    assert body is not None and body[0] == segment
+    assert proxy._resources[f"{token}:segment:{resource_id}"].body is None
+
+
+@pytest.mark.asyncio
+async def test_resource_is_not_stored_after_unload() -> None:
+    """An in-flight rebase must not resurrect a forgotten token."""
+    proxy, token, _ = _proxy()
+
+    async def fake_fetch(url: str) -> tuple[bytes, dict[str, str]] | None:
+        if url == UPSTREAM:
+            return PLAYLIST.encode(), {}
+        if "segment1.ts" in url:
+            return b"segment-bytes" * 30, {}
+        return None
+
+    async def forget_during_rebase(
+        current_token: str, encrypted: bytes, meta: object
+    ) -> tuple[bytes, bool]:
+        proxy._forget(current_token)
+        return encrypted, True
+
+    with (
+        patch.object(proxy, "_fetch", side_effect=fake_fetch),
+        patch.object(proxy, "_rebase_segment", side_effect=forget_during_rebase),
+        patch(
+            "custom_components.tuya_project_cloud.stream_proxy.get_url",
+            return_value="http://ha.invalid:8123",
+        ),
+    ):
+        text = await proxy.playlist(token)
+        assert text is not None
+        resource_id = _segment_paths(text)[0].rsplit("/", 1)[-1].removesuffix(".ts")
+        assert await proxy.resource(token, "segment", resource_id) is None
+
+    assert f"{token}:segment:{resource_id}" not in proxy._resources
+
+
+@pytest.mark.asyncio
+async def test_playlist_without_explicit_iv_is_not_rebased() -> None:
+    """A guessed IV would break decryption, so no metadata is stored."""
+    proxy, token, _ = _proxy()
+    playlist = PLAYLIST.replace(",IV=0x1234", "")
+
+    async def fake_fetch(url: str) -> tuple[bytes, dict[str, str]] | None:
+        if url == UPSTREAM:
+            return playlist.encode(), {}
+        return None
+
+    with (
+        patch.object(proxy, "_fetch", side_effect=fake_fetch),
+        patch(
+            "custom_components.tuya_project_cloud.stream_proxy.get_url",
+            return_value="http://ha.invalid:8123",
+        ),
+    ):
+        assert await proxy.playlist(token) is not None
+
+    assert not proxy._segment_meta

@@ -31,8 +31,15 @@ def _packet(*, pcr: int | None, dts: int | None, pusi: bool = True) -> bytearray
     if pusi and dts is not None:
         packet[payload : payload + 3] = b"\x00\x00\x01"
         packet[payload + 3] = 0xE0
+        packet[payload + 6] = 0x80
         packet[payload + 7] = 0xC0
         packet[payload + 8] = 10
+        packet[payload + 9] = 0x31
+        packet[payload + 11] = 0x01
+        packet[payload + 13] = 0x01
+        packet[payload + 14] = 0x11
+        packet[payload + 16] = 0x01
+        packet[payload + 18] = 0x01
         _write_timestamp(packet, payload + 9, dts)
         _write_timestamp(packet, payload + 14, dts)
     return packet
@@ -65,6 +72,39 @@ def test_encrypt_decrypt_roundtrip() -> None:
     assert encrypted is not None
     assert encrypted != data
     assert decrypt(encrypted, _KEY, _IV) == data
+
+
+def test_shift_preserves_pts_dts_prefixes_and_markers() -> None:
+    data = bytes(_packet(pcr=_TICK, dts=_TICK))
+    result = shift(data, 30 * _TICK)
+    # PTS prefix 0011, DTS prefix 0001; all marker bits stay set.
+    assert result[21] == data[21] == 0x31
+    assert result[26] == data[26] == 0x11
+    assert all(result[index] & 1 for index in (23, 25, 28, 30))
+    assert timestamps(result) == (31 * _TICK, 31 * _TICK)
+
+
+def test_padding_packets_without_pes_header_are_ignored() -> None:
+    packet = _packet(pcr=None, dts=_TICK)
+    packet[8] = 0xBE
+    data = bytes(packet)
+    assert timestamps(data) == (None, None)
+    assert shift(data, _TICK) == data
+
+
+def test_last_timestamp_compares_across_wraparound() -> None:
+    data = bytes(_packet(pcr=(1 << 33) - _TICK, dts=(1 << 33) - 10 * _TICK))
+    first, last = timestamps(shift(data, 2 * _TICK))
+    assert last == _TICK
+    assert first != last
+
+
+def test_encrypt_decrypt_roundtrip_with_pkcs7_padding() -> None:
+    data = bytes(_packet(pcr=_TICK, dts=_TICK)) * 8 + b"\x10" * 16
+    encrypted = encrypt(data, _KEY, _IV)
+    assert encrypted is not None
+    assert decrypt(encrypted, _KEY, _IV) == data
+    assert timestamps(decrypt(encrypted, _KEY, _IV) or b"") == (_TICK, _TICK)
 
 
 def test_invalid_key_material_is_rejected() -> None:
