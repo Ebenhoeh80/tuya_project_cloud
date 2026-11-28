@@ -1,5 +1,23 @@
 # Changelog / Änderungen
 
+## [0.4.1] - 2026-11-28
+
+### Deutsch
+
+- Der Türspion (batteriebetrieben, `wireless_lowpower=true`) bekommt sein Video wieder über den lokalen HLS-Re-Proxy aus 0.3.0. Die direkte HLS-Allokation aus 0.4.0 dekodiert zwar in einer rein lesenden PyAV-Probe (911 Frames in 61 s), brach aber in der HA-Wiedergabe nach wenigen Paketen ab (`Stream ended; no additional packets`). Der Proxy bietet HA und go2rtc weiterhin eine stabile lokale `index.m3u8` und allokiert bei jedem (Neu)Start im Hintergrund eine frische signierte Quelle.
+- Netzversorgte Kameras behalten die frische RTSP-Allokation pro Streamstart; die Low-Power-Erkennung, die Fallback-Kette und der 10-s-Mindestabstand bei `Stream.update_source()` bleiben unverändert. Bei einem Worker-Fehler verwirft die Kamera beim Türspion die zwischengespeicherte Proxy-Allokation und verbindet sich über dieselbe lokale URL neu, damit die go2rtc-Registry stabil bleibt.
+- Stillbilder nutzen weiterhin die direkt allokierte frische Quelle über `ffmpeg`; damit bleibt der zuvor behobene HTTP-500-Fehler ohne aktiven Stream behoben. Entity-IDs, Unique-IDs, Automationen und Schreibpfade bleiben unverändert; die Wallbox bleibt read-only.
+- Qualität: 183 Tests grün (vier neue Kamera-Tests für Proxy-Quelle, Proxy-Renewal, zweiten Client und Offline-Fall), `ruff check`, `ruff format --check` und `git diff --check` sauber. Keine Geheimnis-, Token-, URL- oder Rohgeräte-ID-Werte in Doku, Tests oder Logs.
+
+### English
+
+- The battery-powered door viewer (`wireless_lowpower=true`) gets its video from the local HLS reverse proxy again. The direct HLS allocation from 0.4.0 decodes in a read-only PyAV probe (911 frames in 61 s) but stopped after a few packets during HA playback (`Stream ended; no additional packets`). The proxy keeps serving a stable local `index.m3u8` to HA and go2rtc and allocates a fresh signed upstream URL in the background on every (re)start.
+- Mains-powered cameras keep the fresh RTSP allocation on every stream start; low-power detection, the fallback chain and the 10 s minimum interval for `Stream.update_source()` are unchanged. On a worker failure the door viewer drops the cached proxy allocation and reconnects through the same local URL, keeping the go2rtc stream registry stable.
+- Still images continue to use the directly allocated fresh source via `ffmpeg`, so the previously fixed HTTP 500 without an active stream stays fixed. Entity IDs, unique IDs, automations and write paths are unchanged; the wallbox stays read-only.
+- Quality: 183 tests passing (four new camera tests for the proxy source, proxy renewal, a second client and the offline case), `ruff check`, `ruff format --check` and `git diff --check` clean. No secret, token, URL or raw device ID values in docs, tests or logs.
+
+---
+
 ## [0.4.0] - 2026-11-28
 
 ### Deutsch

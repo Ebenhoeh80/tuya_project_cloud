@@ -38,6 +38,8 @@ PARALLEL_UPDATES = 0
 # low-power DPS codes instead of guessing per device. A single
 # `wireless_powermode`/`wireless_awake` code can also occur on mains-powered
 # cameras, so require both unless `wireless_lowpower` is explicitly true.
+# Direct HLS still stopped after a few packets in HA playback on 2026-11-28,
+# so battery-powered cameras stream through the stable local proxy (0.4.1).
 STREAM_TYPE_PRIMARY = "rtsp"
 STREAM_TYPE_FALLBACK = "hls"
 LOW_POWER_DPS_CODE = "wireless_lowpower"
@@ -147,6 +149,25 @@ class TuyaCamera(CoordinatorEntity["TuyaProjectCloudCoordinator"], Camera):
             return device.status.get(LOW_POWER_DPS_CODE) is not False
         return LOW_POWER_PAIR_CODES <= codes
 
+    def _uses_proxy_for_stream(self) -> bool:
+        """Return whether video must use the stable local HLS playlist.
+
+        A direct HLS allocation decodes correctly in a standalone probe, but
+        HA's stream worker stopped after a few packets during live playback
+        (2026-11-28). The proxy was verified over two 10-minute soaks in 0.3.0
+        and hides signed URLs, keys and segments from the worker. Mains-powered
+        cameras keep their fresh RTSP allocation.
+        """
+        device = self._tuya_device
+        return bool(
+            device
+            and device.online
+            and device.last_update_success
+            and self._prefers_hls(device)
+            and self._proxy_token
+            and self._proxy is not None
+        )
+
     async def _async_allocate_source(self) -> str | None:
         """Return a fresh source for the device's stream type."""
         device = self._tuya_device
@@ -193,7 +214,15 @@ class TuyaCamera(CoordinatorEntity["TuyaProjectCloudCoordinator"], Camera):
                 and now - self._last_renewal < MIN_SOURCE_RENEWAL_INTERVAL
             ):
                 return
-            source = await self._async_allocate_source()
+            if self._uses_proxy_for_stream():
+                # The URL stays stable for go2rtc; dropping the cached
+                # allocation makes the next playlist request allocate fresh.
+                assert self._proxy_token is not None
+                assert self._proxy is not None
+                self._proxy.invalidate(self._proxy_token)
+                source = self._proxy.source_url(self._proxy_token)
+            else:
+                source = await self._async_allocate_source()
             if source is None:
                 return
             if self.stream is not stream:
@@ -202,12 +231,22 @@ class TuyaCamera(CoordinatorEntity["TuyaProjectCloudCoordinator"], Camera):
             self._last_renewal = time.monotonic()
 
     async def stream_source(self) -> str | None:
-        """Return a fresh source; signed URLs never reach HA state or logs."""
+        """Return a working source; signed URLs never reach HA state or logs."""
         device = self._tuya_device
         if not device or not device.online or not device.last_update_success:
             return None
+        fresh_start = self.stream is None or not self.stream.available
         if self.stream is not None and not self.stream.available:
             self.stream = None
+        if self._uses_proxy_for_stream():
+            assert self._proxy_token is not None
+            assert self._proxy is not None
+            # A new stream (or a recovered worker) gets a fresh upstream
+            # allocation behind the same local URL. Additional clients during
+            # healthy playback reuse it, avoiding go2rtc registry churn.
+            if fresh_start:
+                self._proxy.invalidate(self._proxy_token)
+            return self._proxy.source_url(self._proxy_token)
         return await self._async_allocate_source()
 
     async def async_camera_image(

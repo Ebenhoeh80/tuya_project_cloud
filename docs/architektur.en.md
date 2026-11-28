@@ -140,11 +140,11 @@ The four verified DPS integer codes (`cur_power`, `cur_voltage`, `cur_current`, 
 - `tests/test_coordinator.py`: device mapping, auth→reauth, shadow refresh and retry, stale devices, repair throttling, command 1106, IoT Core authorization.
 - `tests/test_init.py`: setup/error paths/unload, `runtime_data`, repair cleanup, forwarding of the `camera` platform.
 - `tests/test_entities.py`: DPS and shadow→entity mapping, dynamic shadow sensors, stable light/cover codes, switch code compatibility.
-- `tests/test_camera.py`: RTSP/HLS selection, fallback chain, offline case, option, stream error, renewal of expired sources, throttling, state callback and fresh still-image source.
+- `tests/test_camera.py`: RTSP/HLS selection, HLS proxy for battery-powered cameras, fallback chain, offline case, option, stream error, renewal of expired sources, throttling, state callback and fresh still-image source.
 - `tests/test_stream_proxy.py`: URL rewrite without secrets, TTL cache, forced reallocation, unknown tokens and 404 behaviour of the views.
 - `tests/test_diagnostics.py`: redaction including stream URL/`m3u8`, shadow codes only in output.
 
-Current state: 179 tests green, `ruff check` and `ruff format --check` clean (Python 3.14). The minimum version is Home Assistant 2025.8.0 because `OptionsFlowWithReload` was introduced there. Since 0.3.1 the device metadata also carries the shared `tuya` identifier so HA groups entries from `tuya_project_cloud`, `tuya` and Xtend Tuya under "Linked devices". `pytest.ini` sets `asyncio_mode = auto`, `strict-markers` and `strict-config`; `validate.yml` uses concurrency and timeouts. Camera tests additionally need `PyTurboJPEG` for `homeassistant.components.camera` and `ha-ffmpeg` for the `ffmpeg` manifest dependency.
+Current state: 183 tests green, `ruff check` and `ruff format --check` clean (Python 3.14). The minimum version is Home Assistant 2025.8.0 because `OptionsFlowWithReload` was introduced there. Since 0.3.1 the device metadata also carries the shared `tuya` identifier so HA groups entries from `tuya_project_cloud`, `tuya` and Xtend Tuya under "Linked devices". `pytest.ini` sets `asyncio_mode = auto`, `strict-markers` and `strict-config`; `validate.yml` uses concurrency and timeouts. Camera tests additionally need `PyTurboJPEG` for `homeassistant.components.camera` and `ha-ffmpeg` for the `ffmpeg` manifest dependency.
 
 ## 9. Iteration plan
 
@@ -157,5 +157,6 @@ Current state: 179 tests green, `ruff check` and `ruff format --check` clean (Py
 7. **Iteration G:** Live probe of the new client methods (8 devices, 23 shadow properties, HLS allocation) without secret output. ✅ complete
 8. **Iteration H:** Local HLS reverse proxy with a stable source for HA/go2rtc, URL/key rewrite and pseudonymized error paths. ✅ complete
 9. **Iteration I (0.4.0):** Fresh allocation on every stream start like HA Core and Xtend Tuya, RTSP for mains-powered and HLS for battery-powered cameras, fallback chain and still images via `ffmpeg`. ✅ complete
+10. **Iteration J (0.4.1):** Return to the proven local HLS reverse proxy for video from battery-powered cameras; RTSP stays direct, still images stay direct via `ffmpeg`, proxy renewal without registry churn. ✅ complete
 
 After each iteration: document assumptions, verify tests, adjust architecture. Deployment into the running HA instance is verified for 0.2.4: HACS upgrade installed, config entry `loaded`, 8 devices and 73/73 entity IDs unchanged (0 missing, 0 new).

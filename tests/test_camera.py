@@ -89,35 +89,57 @@ async def test_camera_uses_fresh_rtsp_url() -> None:
 
 
 @pytest.mark.asyncio
-async def test_low_power_camera_uses_hls() -> None:
-    """Battery-powered cameras stay awake on HLS, not RTSP."""
+async def test_low_power_camera_uses_stable_hls_proxy() -> None:
+    """Battery-powered cameras use the proven HLS proxy, not a direct URL."""
     entry = _entry(dps_codes=("wireless_lowpower",))
-    entry.runtime_data.client.async_allocate_stream = AsyncMock(
-        side_effect=lambda _id, kind: FALLBACK_URL if kind == "hls" else DIRECT_URL
-    )
     camera = await _setup_camera(entry)
-    assert await camera.stream_source() == FALLBACK_URL
-    entry.runtime_data.client.async_allocate_stream.assert_awaited_once_with(
-        "cam1", "hls"
-    )
+    with patch.object(camera._proxy, "invalidate") as invalidate:
+        source = await camera.stream_source()
+    assert source is not None
+    assert f"{PLAYLIST_PATH}/" in source
+    assert source.endswith("/index.m3u8")
+    invalidate.assert_called_once_with(camera._proxy_token)
+    entry.runtime_data.client.async_allocate_stream.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_low_power_function_code_also_selects_hls() -> None:
-    """A low-power code exposed only as a function is sufficient too."""
+async def test_healthy_hls_stream_does_not_reallocate_on_second_client() -> None:
+    """Repeated clients during healthy playback reuse the cached playlist."""
+    entry = _entry(dps_codes=("wireless_lowpower",))
+    camera = await _camera_with_stream(entry, _stream(available=True))
+    with patch.object(camera._proxy, "invalidate") as invalidate:
+        source = await camera.stream_source()
+    assert source is not None
+    assert f"{PLAYLIST_PATH}/" in source
+    invalidate.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_low_power_function_code_also_selects_hls_proxy() -> None:
+    """A low-power code exposed only as a function selects the proxy too."""
     entry = _entry()
-    entry.runtime_data.client.async_allocate_stream = AsyncMock(
-        side_effect=lambda _id, kind: FALLBACK_URL if kind == "hls" else DIRECT_URL
-    )
     camera = await _setup_camera(entry)
     camera.coordinator.data["cam1"].functions = {
         "wireless_awake": MagicMock(),
         "wireless_powermode": MagicMock(),
     }
-    assert await camera.stream_source() == FALLBACK_URL
-    entry.runtime_data.client.async_allocate_stream.assert_awaited_once_with(
-        "cam1", "hls"
+    source = await camera.stream_source()
+    assert source is not None
+    assert f"{PLAYLIST_PATH}/" in source
+    entry.runtime_data.client.async_allocate_stream.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_low_power_without_proxy_uses_direct_hls() -> None:
+    """Without a proxy route the battery camera still gets a fresh HLS URL."""
+    entry = _entry(dps_codes=("wireless_lowpower",))
+    coordinator = entry.runtime_data
+    coordinator.client.async_allocate_stream = AsyncMock(
+        side_effect=lambda _id, kind: FALLBACK_URL if kind == "hls" else DIRECT_URL
     )
+    camera = TuyaCamera(coordinator, coordinator.data["cam1"])
+    assert await camera.stream_source() == FALLBACK_URL
+    coordinator.client.async_allocate_stream.assert_awaited_once_with("cam1", "hls")
 
 
 @pytest.mark.asyncio
@@ -231,6 +253,33 @@ async def test_expired_stream_source_is_renewed() -> None:
     entry.runtime_data.client.async_allocate_stream.assert_awaited_once_with(
         "cam1", "rtsp"
     )
+
+
+@pytest.mark.asyncio
+async def test_low_power_renewal_invalidates_proxy_allocation() -> None:
+    """A stalled HLS worker reconnects to the same URL with a fresh playlist."""
+    entry = _entry(dps_codes=("wireless_lowpower",))
+    stream = _stream()
+    camera = await _camera_with_stream(entry, stream)
+    with patch.object(camera._proxy, "invalidate") as invalidate:
+        await camera._async_renew_stream_source()
+    invalidate.assert_called_once_with(camera._proxy_token)
+    expected = camera._proxy.source_url(camera._proxy_token)
+    stream.update_source.assert_called_once_with(expected)
+    entry.runtime_data.client.async_allocate_stream.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_offline_low_power_camera_does_not_renew() -> None:
+    """An offline battery camera must not reconnect the proxy worker."""
+    entry = _entry(dps_codes=("wireless_lowpower",), online=False)
+    stream = _stream()
+    camera = await _camera_with_stream(entry, stream)
+    with patch.object(camera._proxy, "invalidate") as invalidate:
+        await camera._async_renew_stream_source()
+    invalidate.assert_not_called()
+    stream.update_source.assert_not_called()
+    entry.runtime_data.client.async_allocate_stream.assert_not_awaited()
 
 
 @pytest.mark.asyncio
