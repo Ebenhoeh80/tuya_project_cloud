@@ -1,5 +1,23 @@
 # Changelog / Änderungen
 
+## [0.4.4] - 2026-11-28
+
+### Deutsch
+
+- UX-Audit aller sichtbaren Entitäten und Texte: DPS-Aliase mit mehreren Codes pro Namen erhalten jetzt eigene Anzeigenamen (`Luftfeuchtigkeit (Rohwert 2)`, `Temperatur (Rohwert 2/3)`, `CO₂ (Rohwert 2)`, `PM2,5 (Rohwert 2)`, `Spannung (Rohwert 2)`, `Strom (Rohwert 2)`, `Energie (Rohwert 2)`). Damit zeigt kein Gerät zwei Entitäten mit identischem Namen mehr. Unbekannte DPS-Codes erscheinen nur noch klar als Code gekennzeichnet (`Tuya-Wert (Code: …)`) statt als nackter Rohwert.
+- Beschreibende Namen statt Fachchinesisch: `humanoid_filter` heißt jetzt „Nur-Personen-Filter" (ein Filter für erkannte Personen, kein Schalter für die Erkennung), `sd_format` warnt ausdrücklich vor dem Löschen aller Daten, `enable`/`record`/`pir_switch`/`doorbell_active` sind als Aktionen benannt. „Energie (Zählerstand)" unterscheidet sich jetzt vom Schatten-Sensor „Gesamtenergie"; „Gerätestatus (Rohwert)", „Heartbeat (Verbindungsüberwachung)", „Energiesparmodus (Stufe)" und „Livestreams bereitstellen (HLS)" sind für Normalnutzer sofort verständlich. Diagnostics ersetzt `sha256-prefix (12 chars)` durch `pseudonymized device ID`.
+- DE und EN bleiben vollständig key- und platzhaltergleich, inklusive der neuen Regressionstests für eindeutige Namen, gekennzeichnete Codes und die Sicherheitshinweise. Entity-IDs, Unique-IDs, Automationen, Entity-Kategorien, Schreibpfade und Stream-Code sind unverändert; die Wallbox bleibt read-only.
+- Qualität: 211 Tests grün (vier neue UX-Regressionstests), `ruff check`, `ruff format --check` und `git diff --check` sauber. Nach dem Upgrade in Home Assistant: beide Kameras 140 s durchgehend `streaming`, Stillbilder beider Kameras erfolgreich, 0 Stream-Fehler beim Türspion. Die PAN-Kamera zeigte einen einzelnen initialen RTSP-404, den die bestehende Resilienz sofort durch `Stream.update_source()` mit frischer Allokation behob (`Started stream`, `Updating stream source`, danach 46 s ohne weitere Fehler). Keine DEBUG-Overrides aktiv.
+
+### English
+
+- UX audit of every visible entity and text: DPS aliases that share one name across several codes now have distinct display names (`Humidity (raw value 2)`, `Temperature (raw value 2/3)`, `CO₂ (raw value 2)`, `PM2.5 (raw value 2)`, `Voltage (raw value 2)`, `Current (raw value 2)`, `Energy (raw value 2)`). No device shows two entities with the same name any more. Unknown DPS codes are now explicitly labelled as codes (`Tuya value (code: …)`) instead of appearing as bare raw values.
+- Descriptive names instead of jargon: `humanoid_filter` is now "Human-only filter" (a filter for detected people, not a switch that enables detection), `sd_format` explicitly warns that all data is erased, and `enable`/`record`/`pir_switch`/`doorbell_active` are named as actions. "Energy (meter reading)" is now distinct from the shadow sensor "Total energy"; "Device status (raw value)", "Heartbeat (connection check)", "Power-saving mode (level)" and "Expose live streams (HLS)" are immediately clear to regular users. Diagnostics replaces `sha256-prefix (12 chars)` with `pseudonymized device ID`.
+- German and English stay fully identical in keys and placeholders, including four new regression tests for unique names, labelled codes and the safety warnings. Entity IDs, unique IDs, automations, entity categories, write paths and stream code are unchanged; the wallbox stays read-only.
+- Quality: 211 tests passing (four new UX regression tests), `ruff check`, `ruff format --check` and `git diff --check` clean. After upgrading in Home Assistant both cameras stayed `streaming` for 140 s, snapshots of both cameras succeeded, and the door viewer had 0 stream errors. The pan/tilt camera showed one initial RTSP 404 that the existing resilience immediately resolved via `Stream.update_source()` with a fresh allocation (`Started stream`, `Updating stream source`, then 46 s without further errors). No DEBUG overrides active.
+
+---
+
 ## [0.4.3] - 2026-11-28
 
 ### Deutsch

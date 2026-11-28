@@ -38,7 +38,7 @@
         "data": {
           "scan_interval": "Polling interval in seconds (10–900, default 30)",
           "enable_shadow": "Read IoT Core thing shadow data (charger values, refreshed every minute)",
-          "enable_camera": "Expose HLS live streams"
+          "enable_camera": "Expose live streams (HLS)"
         }
       }
     }
@@ -67,14 +67,14 @@
       "current_l2": { "name": "Current L2" },
       "current_l3": { "name": "Current L3" },
       "power": { "name": "Charging power" },
-      "energy_session": { "name": "Energy in this session" },
+      "energy_session": { "name": "Energy in this charging session" },
       "charge_current": { "name": "Charge current" },
       "max_current_cfg": { "name": "Configured maximum current" },
       "energy_total": { "name": "Total energy" },
       "firmware": { "name": "Firmware" },
       "rcd_type": { "name": "Residual-current device type" },
       "heartbeat": {
-        "name": "Heartbeat signal",
+        "name": "Heartbeat (connection check)",
         "state": {
           "false": "No heartbeat",
           "true": "Heartbeat received"
@@ -82,30 +82,38 @@
       },
       "dps_battery": { "name": "Battery (raw value)" },
       "dps_humidity": { "name": "Humidity (raw value)" },
+      "dps_humidity_2": { "name": "Humidity (raw value 2)" },
       "dps_pm25": { "name": "PM2.5 (raw value)" },
+      "dps_pm25_2": { "name": "PM2.5 (raw value 2)" },
       "dps_pm10": { "name": "PM10 (raw value)" },
       "dps_co2": { "name": "CO₂ (raw value)" },
+      "dps_co2_2": { "name": "CO₂ (raw value 2)" },
       "dps_temperature": { "name": "Temperature (raw value)" },
+      "dps_temperature_2": { "name": "Temperature (raw value 2)" },
+      "dps_temperature_3": { "name": "Temperature (raw value 3)" },
       "dps_power": { "name": "Power (raw value)" },
       "dps_power_calibration": { "name": "Power calibration (raw value)" },
       "dps_energy": { "name": "Energy (raw value)" },
+      "dps_energy_2": { "name": "Energy (raw value 2)" },
       "dps_voltage": { "name": "Voltage (raw value)" },
+      "dps_voltage_2": { "name": "Voltage (raw value 2)" },
       "dps_current": { "name": "Current (raw value)" },
+      "dps_current_2": { "name": "Current (raw value 2)" },
       "dps_power_value": { "name": "Power" },
-      "dps_energy_value": { "name": "Total energy" },
+      "dps_energy_value": { "name": "Energy (meter reading)" },
       "dps_voltage_value": { "name": "Voltage" },
       "dps_current_value": { "name": "Current" },
       "dps_signal": { "name": "Signal strength (raw value)" },
-      "dps_status": { "name": "Status (raw value)" },
+      "dps_status": { "name": "Device status (raw value)" },
       "dps_sd_status": { "name": "SD card status (raw value)" },
       "dps_power_mode": { "name": "Power supply mode (raw value)" },
-      "dps_unknown_sensor": { "name": "Tuya value ({code})" }
+      "dps_unknown_sensor": { "name": "Tuya value (code: {code})" }
     },
     "switch": {
       "dps_switch": { "name": "Switch" },
       "dps_switch_1": { "name": "Switch 1" },
       "dps_onoff": { "name": "On/off" },
-      "dps_enable": { "name": "Enabled" },
+      "dps_enable": { "name": "Enable device" },
       "dps_overcharge": { "name": "Overcharge protection" },
       "dps_child_lock": { "name": "Child lock" },
       "dps_inching": { "name": "Inching mode" },
@@ -113,26 +121,26 @@
       "dps_flip": { "name": "Flip image" },
       "dps_osd": { "name": "On-screen timestamp" },
       "dps_privacy": { "name": "Privacy mode" },
-      "dps_sd_format": { "name": "Format SD card" },
+      "dps_sd_format": { "name": "Format SD card (erases all data)" },
       "dps_motion_record": { "name": "Motion recording" },
-      "dps_record": { "name": "Recording" },
+      "dps_record": { "name": "Start recording" },
       "dps_power_saving": { "name": "Power-saving mode" },
       "dps_wake": { "name": "Wake-up" },
-      "dps_motion_sensor": { "name": "Motion sensor" },
-      "dps_doorbell": { "name": "Doorbell active" },
+      "dps_motion_sensor": { "name": "Enable motion sensor" },
+      "dps_doorbell": { "name": "Enable doorbell" },
       "dps_motion_detection": { "name": "Motion detection" },
       "dps_motion_tracking": { "name": "Motion tracking" },
-      "dps_human_filter": { "name": "Human detection" },
+      "dps_human_filter": { "name": "Human-only filter" },
       "dps_cruise": { "name": "Patrol mode" },
       "dps_ptz_stop": { "name": "Stop camera movement" },
       "dps_ptz_calibration": { "name": "Calibrate camera" },
-      "dps_unknown_switch": { "name": "Tuya switch ({code})" }
+      "dps_unknown_switch": { "name": "Tuya switch (code: {code})" }
     },
     "number": {
       "dps_countdown_1": { "name": "Countdown 1" },
       "dps_volume": { "name": "Volume" },
-      "dps_power_saving_value": { "name": "Power-saving mode (value)" },
-      "dps_unknown_number": { "name": "Tuya value ({code})" }
+      "dps_power_saving_value": { "name": "Power-saving mode (level)" },
+      "dps_unknown_number": { "name": "Tuya value (code: {code})" }
     }
   },
   "selector": {

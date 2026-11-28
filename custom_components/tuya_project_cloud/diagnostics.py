@@ -50,7 +50,7 @@ async def async_get_config_entry_diagnostics(
                 coordinator, "iot_core_not_authorized", False
             ),
             "device_count": len(devices),
-            "id_redaction": "sha256-prefix (12 chars)",
+            "id_redaction": "pseudonymized device ID",
             "devices": [
                 {
                     "id": redact_identifier(device.id),
@@ -86,7 +86,7 @@ async def async_get_device_diagnostics(
     return _redact(
         {
             "device_id": redact_identifier(device_id) if device_id else None,
-            "id_redaction": "sha256-prefix (12 chars)",
+            "id_redaction": "pseudonymized device ID",
             "category": tuya_device.category if tuya_device else None,
             "status": tuya_device.status if tuya_device else {},
             "functions": {

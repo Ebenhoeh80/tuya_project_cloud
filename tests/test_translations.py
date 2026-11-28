@@ -7,7 +7,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-from custom_components.tuya_project_cloud import dps
+from custom_components.tuya_project_cloud import diagnostics, dps
 from custom_components.tuya_project_cloud.interpret import INTERPRETATIONS
 from custom_components.tuya_project_cloud.shadow import CHARGER_SHADOW_SENSORS
 
@@ -136,3 +136,59 @@ def test_user_facing_errors_are_translated() -> None:
         for key, value in data["issues"].items():
             assert value["title"].strip(), (language, key)
             assert value["description"].strip(), (language, key)
+
+
+def _visible_keys(platform: str) -> set[str]:
+    """Return every translation key that can become a friendly name."""
+    descriptions = {
+        "sensor": list(dps.SENSOR_DESCRIPTIONS.values())
+        + list(CHARGER_SHADOW_SENSORS)
+        + list(INTERPRETATIONS.values()),
+        "switch": list(dps.SWITCH_DESCRIPTIONS.values()),
+        "number": list(dps.NUMBER_DESCRIPTIONS.values()),
+    }[platform]
+    keys = {item.translation_key for item in descriptions}
+    keys.add(f"dps_unknown_{platform}")
+    return keys
+
+
+def test_visible_entity_names_are_unique() -> None:
+    """No device shows two entities with exactly the same friendly name."""
+    for language in ("strings", "de", "en"):
+        entities = _load(language)["entity"]
+        for platform in ("sensor", "switch", "number"):
+            names = [entities[platform][key]["name"] for key in _visible_keys(platform)]
+            assert len(names) == len(set(names)), (language, platform)
+
+
+def test_unknown_dps_codes_are_labelled_as_codes() -> None:
+    """A raw DPS code is never shown as a bare friendly name."""
+    for language in ("strings", "de", "en"):
+        entities = _load(language)["entity"]
+        for platform in ("sensor", "switch", "number"):
+            name = entities[platform][f"dps_unknown_{platform}"]["name"]
+            assert "code:" in name.lower(), (language, platform, name)
+
+
+def test_safety_and_function_names_are_unambiguous() -> None:
+    """Destructive switches and camera filters say what they really do."""
+    de = _load("de")["entity"]
+    en = _load("en")["entity"]
+    assert "löscht alle daten" in de["switch"]["dps_sd_format"]["name"].lower()
+    assert "erases all data" in en["switch"]["dps_sd_format"]["name"].lower()
+    assert "nur" in de["switch"]["dps_human_filter"]["name"].lower()
+    assert "only" in en["switch"]["dps_human_filter"]["name"].lower()
+    assert (
+        de["sensor"]["dps_energy_value"]["name"] != de["sensor"]["energy_total"]["name"]
+    )
+    assert (
+        en["sensor"]["dps_energy_value"]["name"] != en["sensor"]["energy_total"]["name"]
+    )
+
+
+def test_diagnostics_redaction_label_is_plain_language() -> None:
+    """The diagnostics hint avoids developer jargon such as hash prefixes."""
+    source = (COMPONENT / "diagnostics.py").read_text(encoding="utf-8")
+    assert diagnostics._redact is not None
+    assert "pseudonymized device ID" in source
+    assert "sha256-prefix" not in source

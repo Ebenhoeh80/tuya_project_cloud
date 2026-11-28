@@ -38,7 +38,7 @@
         "data": {
           "scan_interval": "Abfrageintervall in Sekunden (10–900, Standard 30)",
           "enable_shadow": "IoT-Core-Geräteschatten lesen (Ladewerte, Aktualisierung jede Minute)",
-          "enable_camera": "HLS-Livestreams bereitstellen"
+          "enable_camera": "Livestreams bereitstellen (HLS)"
         }
       }
     }
@@ -74,38 +74,46 @@
       "firmware": { "name": "Firmware" },
       "rcd_type": { "name": "Fehlerstromschutz-Typ" },
       "heartbeat": {
-        "name": "Lebenszeichen",
+        "name": "Heartbeat (Verbindungsüberwachung)",
         "state": {
-          "false": "Kein Lebenszeichen",
-          "true": "Lebenszeichen empfangen"
+          "false": "Kein Heartbeat",
+          "true": "Heartbeat empfangen"
         }
       },
       "dps_battery": { "name": "Batterie (Rohwert)" },
       "dps_humidity": { "name": "Luftfeuchtigkeit (Rohwert)" },
+      "dps_humidity_2": { "name": "Luftfeuchtigkeit (Rohwert 2)" },
       "dps_pm25": { "name": "Feinstaub PM2,5 (Rohwert)" },
+      "dps_pm25_2": { "name": "Feinstaub PM2,5 (Rohwert 2)" },
       "dps_pm10": { "name": "Feinstaub PM10 (Rohwert)" },
       "dps_co2": { "name": "CO₂ (Rohwert)" },
+      "dps_co2_2": { "name": "CO₂ (Rohwert 2)" },
       "dps_temperature": { "name": "Temperatur (Rohwert)" },
+      "dps_temperature_2": { "name": "Temperatur (Rohwert 2)" },
+      "dps_temperature_3": { "name": "Temperatur (Rohwert 3)" },
       "dps_power": { "name": "Leistung (Rohwert)" },
       "dps_power_calibration": { "name": "Leistungskalibrierung (Rohwert)" },
       "dps_energy": { "name": "Energie (Rohwert)" },
+      "dps_energy_2": { "name": "Energie (Rohwert 2)" },
       "dps_voltage": { "name": "Spannung (Rohwert)" },
+      "dps_voltage_2": { "name": "Spannung (Rohwert 2)" },
       "dps_current": { "name": "Strom (Rohwert)" },
+      "dps_current_2": { "name": "Strom (Rohwert 2)" },
       "dps_power_value": { "name": "Leistung" },
-      "dps_energy_value": { "name": "Energie gesamt" },
+      "dps_energy_value": { "name": "Energie (Zählerstand)" },
       "dps_voltage_value": { "name": "Spannung" },
-      "dps_current_value": { "name": "Stromstärke" },
+      "dps_current_value": { "name": "Strom" },
       "dps_signal": { "name": "Signalstärke (Rohwert)" },
-      "dps_status": { "name": "Status (Rohwert)" },
+      "dps_status": { "name": "Gerätestatus (Rohwert)" },
       "dps_sd_status": { "name": "Speicherkartenstatus (Rohwert)" },
       "dps_power_mode": { "name": "Stromversorgungsmodus (Rohwert)" },
-      "dps_unknown_sensor": { "name": "Tuya-Wert ({code})" }
+      "dps_unknown_sensor": { "name": "Tuya-Wert (Code: {code})" }
     },
     "switch": {
       "dps_switch": { "name": "Schalter" },
       "dps_switch_1": { "name": "Schalter 1" },
       "dps_onoff": { "name": "Ein/Aus" },
-      "dps_enable": { "name": "Aktiviert" },
+      "dps_enable": { "name": "Gerät aktivieren" },
       "dps_overcharge": { "name": "Überladungsschutz" },
       "dps_child_lock": { "name": "Kindersicherung" },
       "dps_inching": { "name": "Impulsmodus" },
@@ -113,26 +121,26 @@
       "dps_flip": { "name": "Bild spiegeln" },
       "dps_osd": { "name": "Zeitstempel im Bild" },
       "dps_privacy": { "name": "Privatsphäre-Modus" },
-      "dps_sd_format": { "name": "Speicherkarte formatieren" },
+      "dps_sd_format": { "name": "Speicherkarte formatieren (löscht alle Daten)" },
       "dps_motion_record": { "name": "Bewegungsaufnahme" },
-      "dps_record": { "name": "Aufnahme" },
+      "dps_record": { "name": "Aufnahme starten" },
       "dps_power_saving": { "name": "Energiesparmodus" },
       "dps_wake": { "name": "Aufwecken" },
-      "dps_motion_sensor": { "name": "Bewegungsmelder" },
-      "dps_doorbell": { "name": "Klingel aktiv" },
+      "dps_motion_sensor": { "name": "Bewegungsmelder aktivieren" },
+      "dps_doorbell": { "name": "Klingel aktivieren" },
       "dps_motion_detection": { "name": "Bewegungserkennung" },
       "dps_motion_tracking": { "name": "Motivverfolgung" },
-      "dps_human_filter": { "name": "Personenerkennung" },
+      "dps_human_filter": { "name": "Nur-Personen-Filter" },
       "dps_cruise": { "name": "Patrouillenmodus" },
       "dps_ptz_stop": { "name": "Kamerafahrt stoppen" },
       "dps_ptz_calibration": { "name": "Kamera kalibrieren" },
-      "dps_unknown_switch": { "name": "Tuya-Schalter ({code})" }
+      "dps_unknown_switch": { "name": "Tuya-Schalter (Code: {code})" }
     },
     "number": {
       "dps_countdown_1": { "name": "Countdown 1" },
       "dps_volume": { "name": "Lautstärke" },
-      "dps_power_saving_value": { "name": "Energiesparmodus (Wert)" },
-      "dps_unknown_number": { "name": "Tuya-Wert ({code})" }
+      "dps_power_saving_value": { "name": "Energiesparmodus (Stufe)" },
+      "dps_unknown_number": { "name": "Tuya-Wert (Code: {code})" }
     }
   },
   "selector": {
@@ -168,7 +176,7 @@
   "issues": {
     "api_not_authorized": {
       "title": "Tuya-API nicht autorisiert",
-      "description": "Das Projekt darf die Device-API (/v1.0/devices) nicht aufrufen. Aktiviere sie in der Tuya-Konsole unter „Service API → Add Authorization“."
+      "description": "Das Projekt darf die Device-API (/v1.0/devices) nicht aufrufen. Aktiviere sie in der Tuya-Konsole unter „Service API → Add Authorization“ (Berechtigung hinzufügen)."
     },
     "iot_core_not_authorized": {
       "title": "IoT Core nicht autorisiert",

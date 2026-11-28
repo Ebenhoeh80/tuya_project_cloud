@@ -466,7 +466,7 @@ async def test_dps_entities_use_readable_translation_keys() -> None:
     number_by_code = {entity.entity_description.key: entity for entity in numbers}
 
     assert sensor_by_code["humidity_value"].entity_description.translation_key == (
-        "dps_humidity"
+        "dps_humidity_2"
     )
     assert sensor_by_code["status_unknown"].entity_description.translation_key == (
         "dps_unknown_sensor"
