@@ -140,7 +140,7 @@ Für die vier verifizierten DPS-Integer-Codes (`cur_power`, `cur_voltage`, `cur_
 - `tests/test_coordinator.py`: Geräte-Mapping, Auth→Reauth, Shadow-Refresh und -Retry, veraltete Geräte, Repair-Throttling, Command-1106, IoT-Core-Autorisierung.
 - `tests/test_init.py`: Setup/Fehlerpfade/Unload, `runtime_data`, Repairs-Cleanup, Forwarding der `camera`-Plattform.
 - `tests/test_entities.py`: DPS- und Shadow→Entity-Mapping, dynamische Shadow-Sensoren, stabile Light-/Cover-Codes, Kompatibilität der Switch-Codes.
-- `tests/test_camera.py`: stabile Proxy-URL, Offline-Fall, Option, Stream-Fehler, Erneuerung abgelaufener Quellen, Drosselung und Status-Callback.
+- `tests/test_camera.py`: RTSP-/HLS-Auswahl, Fallback-Kette, Offline-Fall, Option, Stream-Fehler, Erneuerung abgelaufener Quellen, Drosselung, Status-Callback und frische Stillbild-Quelle.
 - `tests/test_stream_proxy.py`: URL-Rewrite ohne Geheimnisse, TTL-Cache, erzwungene Neuallokation, unbekannte Tokens und 404-Verhalten der Views.
 - `tests/test_diagnostics.py`: Redaction inkl. Stream-URL/`m3u8`, nur Shadow-Codes im Output.
 
@@ -156,5 +156,6 @@ Ist: 179 Tests grün, `ruff check` und `ruff format --check` sauber (Python 3.14
 6. **Iteration F:** Shadow-Client, `shadow.py`, `camera.py`, Optionen, Redaction, de/en-Doku gemäß Ausbauplan. ✅ abgeschlossen
 7. **Iteration G:** Live-Probe der neuen Client-Methoden (8 Geräte, 23 Shadow-Properties, HLS-Allokation) ohne Geheimnisausgabe. ✅ abgeschlossen
 8. **Iteration H:** lokaler HLS-Re-Proxy mit stabiler Quelle für HA/go2rtc, URL-/Key-Rewrite und pseudonymisierten Fehlerpfaden. ✅ abgeschlossen
+9. **Iteration I (0.4.0):** frische Allokation pro Streamstart wie HA Core und Xtend Tuya, RTSP für netzversorgte und HLS für batteriebetriebene Kameras, Fallback-Kette und Stillbild über `ffmpeg`. ✅ abgeschlossen
 
 Nach jeder Iteration: Annahmen dokumentieren, Tests verifizieren, Architektur anpassen. Der Einsatz in der laufenden HA-Instanz ist für 0.2.4 verifiziert: HACS-Upgrade installiert, Config Entry `loaded`, 8 Geräte und 73/73 Entity-IDs unverändert (0 fehlend, 0 neu).
