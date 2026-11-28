@@ -63,6 +63,27 @@ def _response(
     return response
 
 
+def _growing_playlist(segments: int, prefix: str = "segment") -> str:
+    """Return a Tuya-style playlist whose segment list only grows."""
+    lines = [
+        "#EXTM3U",
+        "#EXT-X-VERSION:4",
+        '#EXT-X-KEY:METHOD=AES-128,URI="key.bin?token=KEYTOKEN",IV=0x1234',
+        "#EXT-X-MEDIA-SEQUENCE:0",
+        "#EXT-X-TARGETDURATION:3",
+        "#EXT-X-DISCONTINUITY",
+    ]
+    for index in range(segments):
+        lines.extend(("#EXTINF:2.0,", f"{prefix}{index}.ts?token=SEGTOKEN"))
+    return "\n".join(lines) + "\n"
+
+
+def _segment_paths(playlist: str | None) -> list[str]:
+    """Return only the segment URLs of a rewritten playlist."""
+    assert playlist is not None
+    return [line for line in playlist.splitlines() if line and not line.startswith("#")]
+
+
 @pytest.mark.asyncio
 async def test_playlist_hides_all_signed_upstream_urls() -> None:
     """The rewritten playlist contains only opaque local URLs."""
@@ -366,6 +387,156 @@ async def test_proxy_never_logs_upstream_urls_or_keys(caplog) -> None:
     assert "upstream.invalid" not in caplog.text
     assert "KEYTOKEN" not in caplog.text
     assert "SEGTOKEN" not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_playlist_uses_sliding_window_with_advancing_sequence() -> None:
+    """Tuya's growing segment list becomes a bounded live HLS window."""
+    proxy, token, allocate = _proxy()
+    session = MagicMock()
+    session.get = MagicMock(
+        side_effect=[
+            _response(_growing_playlist(2).encode()),
+            _response(_growing_playlist(5).encode()),
+            _response(_growing_playlist(7).encode()),
+        ]
+    )
+    with (
+        patch(
+            "custom_components.tuya_project_cloud.stream_proxy.async_get_clientsession",
+            return_value=session,
+        ),
+        patch(
+            "custom_components.tuya_project_cloud.stream_proxy.get_url",
+            return_value="http://ha.invalid:8123",
+        ),
+    ):
+        first = await proxy.playlist(token)
+        second = await proxy.playlist(token)
+        third = await proxy.playlist(token)
+
+    def segments(playlist: str | None) -> list[str]:
+        assert playlist is not None
+        return [
+            line for line in playlist.splitlines() if line and not line.startswith("#")
+        ]
+
+    assert "#EXT-X-VERSION:6" in first
+    assert "#EXT-X-DISCONTINUITY-SEQUENCE:0" in third
+    assert "#EXT-X-MEDIA-SEQUENCE:0" in first
+    assert "#EXT-X-MEDIA-SEQUENCE:1" in second
+    assert "#EXT-X-MEDIA-SEQUENCE:3" in third
+    assert len(segments(first)) == 2
+    assert len(segments(second)) == 4
+    assert len(segments(third)) == 4
+    assert segments(second)[0] != segments(first)[0]
+    assert segments(third)[0] != segments(second)[0]
+    assert "#EXT-X-DISCONTINUITY" not in (third or "").splitlines()
+    assert "SEGTOKEN" not in third
+    assert "KEYTOKEN" not in third
+    assert allocate.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_allocation_change_bridges_old_and_new_segments() -> None:
+    """A renewed Tuya session does not reuse a sequence for a new segment."""
+    proxy, token, allocate = _proxy()
+    old_source = "https://upstream.invalid/live/old.m3u8?signInfo=OLD"
+    new_source = "https://upstream.invalid/live/new.m3u8?signInfo=NEW"
+    allocate.side_effect = [old_source, new_source]
+    session = MagicMock()
+    session.get = MagicMock(
+        side_effect=[
+            _response(_growing_playlist(2).encode()),
+            _response(_growing_playlist(2, prefix="renewed").encode()),
+            _response(_growing_playlist(4, prefix="renewed").encode()),
+        ]
+    )
+    with (
+        patch(
+            "custom_components.tuya_project_cloud.stream_proxy.async_get_clientsession",
+            return_value=session,
+        ),
+        patch(
+            "custom_components.tuya_project_cloud.stream_proxy.get_url",
+            return_value="http://ha.invalid:8123",
+        ),
+    ):
+        first = await proxy.playlist(token)
+        proxy.invalidate(token)
+        second = await proxy.playlist(token)
+        third = await proxy.playlist(token)
+
+    first_paths = _segment_paths(first)
+    second_paths = _segment_paths(second)
+    assert "#EXT-X-VERSION:6" in first
+    assert "#EXT-X-DISCONTINUITY-SEQUENCE:0" in (second or "")
+    assert first_paths[0] in second_paths
+    assert second is not None
+    assert "#EXT-X-DISCONTINUITY" in second.splitlines()
+    new_paths = [path for path in second_paths if path not in first_paths]
+    assert len(new_paths) == 2
+    assert second.index("#EXT-X-DISCONTINUITY") < second.index(new_paths[0])
+    assert first_paths[0] not in _segment_paths(third)
+    assert "#EXT-X-DISCONTINUITY-SEQUENCE:1" in (third or "")
+    assert "#EXT-X-DISCONTINUITY" not in (third or "").splitlines()
+    assert allocate.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_frozen_playlist_forces_fresh_allocation() -> None:
+    """A reachable playlist that stops growing is renewed proactively."""
+    proxy, token, allocate = _proxy()
+    session = MagicMock()
+    session.get = MagicMock(
+        side_effect=[
+            _response(PLAYLIST.encode()),
+            _response(PLAYLIST.encode()),
+            _response(PLAYLIST.encode()),
+        ]
+    )
+    with (
+        patch(
+            "custom_components.tuya_project_cloud.stream_proxy.async_get_clientsession",
+            return_value=session,
+        ),
+        patch(
+            "custom_components.tuya_project_cloud.stream_proxy.PLAYLIST_STALE_TIMEOUT",
+            0.0,
+        ),
+    ):
+        assert await proxy.playlist(token) is not None
+        assert await proxy.playlist(token) is not None
+    assert allocate.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_playlist_keeps_key_rewrite_in_sliding_window() -> None:
+    """The AES key stays local even after the window advances."""
+    proxy, token, _ = _proxy()
+    session = MagicMock()
+    session.get = MagicMock(
+        side_effect=[
+            _response(_growing_playlist(2).encode()),
+            _response(_growing_playlist(6).encode()),
+        ]
+    )
+    with (
+        patch(
+            "custom_components.tuya_project_cloud.stream_proxy.async_get_clientsession",
+            return_value=session,
+        ),
+        patch(
+            "custom_components.tuya_project_cloud.stream_proxy.get_url",
+            return_value="http://ha.invalid:8123",
+        ),
+    ):
+        await proxy.playlist(token)
+        playlist = await proxy.playlist(token)
+    assert playlist is not None
+    key_path = re.search(r'URI="([^"]+)"', playlist).group(1)
+    assert key_path.startswith("http://ha.invalid:8123/api/")
+    assert "upstream.invalid" not in playlist
 
 
 @pytest.mark.asyncio

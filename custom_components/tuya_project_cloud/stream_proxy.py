@@ -13,7 +13,7 @@ import logging
 import re
 import secrets
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING
 from urllib.parse import urljoin
 
@@ -33,12 +33,46 @@ if TYPE_CHECKING:
 _LOGGER = logging.getLogger(__name__)
 
 PLAYLIST_PATH = f"/api/{DOMAIN}/stream"
-ALLOCATION_TTL = 120.0
+# Tuya's signed HLS session stopped producing new segments after roughly
+# 40 s in live probes, so renew before that even if the URL still responds.
+ALLOCATION_TTL = 30.0
 RESOURCE_TTL = 600.0
 ALLOCATION_FAILURE_COOLDOWN = 10.0
 FETCH_TIMEOUT = ClientTimeout(total=15)
 FALLBACK_BASE_URL = "http://localhost:8123"
+# Tuya's playlist keeps every segment while its MEDIA-SEQUENCE stays at 0.
+# FFmpeg treats the repeated segments as new on each reload, which produces
+# corrupt packets and ends the worker. Serve a conventional sliding window.
+PLAYLIST_WINDOW = 4
+# Tuya can leave a signed playlist reachable but frozen when its session
+# expires. Without a fetch error the worker would simply run out of segments.
+PLAYLIST_STALE_TIMEOUT = 30.0
 _KEY_URI_RE = re.compile(r'(URI=")([^"]+)(")')
+
+
+@dataclass(frozen=True)
+class _Segment:
+    """One advertised HLS segment with its stable local identity."""
+
+    generation: int
+    url: str
+    resource_id: str
+    key_line: str
+    duration: str
+    discontinuity: bool = False
+
+
+@dataclass
+class _PlaylistState:
+    """Track the live segment window and its media sequence."""
+
+    segments: list[_Segment] = field(default_factory=list)
+    sequence: int = 0
+    last_new: float = 0.0
+    generation: int = 0
+    target_duration: int = 3
+    next_id: int = 0
+    known: set[tuple[int, str]] = field(default_factory=set)
 
 
 @dataclass(frozen=True)
@@ -49,6 +83,7 @@ class _Allocation:
     created: float
     device_id: str
     coordinator: TuyaProjectCloudCoordinator
+    generation: int
 
 
 @dataclass(frozen=True)
@@ -70,6 +105,8 @@ class TuyaStreamProxy:
         self._resources: dict[str, _Resource] = {}
         self._locks: dict[str, asyncio.Lock] = {}
         self._failures: dict[str, float] = {}
+        self._playlist_state: dict[str, _PlaylistState] = {}
+        self._generation = -1
         self._base_url: str | None = None
 
     def register(self, device_id: str, coordinator: TuyaProjectCloudCoordinator) -> str:
@@ -82,8 +119,11 @@ class TuyaStreamProxy:
         """Remove every piece of state belonging to one proxy token."""
         self._routes.pop(token, None)
         self._allocations.pop(token, None)
+        if (state := self._playlist_state.get(token)) is not None:
+            state.last_new = 0.0
         self._locks.pop(token, None)
         self._failures.pop(token, None)
+        self._playlist_state.pop(token, None)
         self._resources = {
             key: value
             for key, value in self._resources.items()
@@ -109,6 +149,8 @@ class TuyaStreamProxy:
         reading an older playlist does not receive 404s mid-playback.
         """
         self._allocations.pop(token, None)
+        if (state := self._playlist_state.get(token)) is not None:
+            state.last_new = 0.0
 
     def _base(self) -> str:
         """Return a stable base URL reachable from inside Home Assistant."""
@@ -177,7 +219,10 @@ class TuyaStreamProxy:
                     type(err).__name__,
                 )
                 return None
-            allocation = _Allocation(url, time.monotonic(), device_id, coordinator)
+            self._generation += 1
+            allocation = _Allocation(
+                url, time.monotonic(), device_id, coordinator, self._generation
+            )
             self._allocations[token] = allocation
             self._failures.pop(token, None)
             return allocation
@@ -195,13 +240,11 @@ class TuyaStreamProxy:
             _LOGGER.debug("Cannot fetch an upstream HLS resource")
             return None
 
-    def _store(self, token: str, kind: str, url: str) -> str:
-        """Store a signed URL under an opaque identifier."""
-        resource_id = hashlib.sha256(f"{token}:{url}".encode()).hexdigest()[:20]
-        self._resources[f"{token}:{kind}:{resource_id}"] = _Resource(
-            url, time.monotonic()
-        )
-        return resource_id
+    def _store(self, token: str, kind: str, url: str, salt: str = "") -> str:
+        """Store a signed URL under a stable, opaque identifier."""
+        digest = hashlib.sha256(f"{token}:{salt}:{url}".encode()).hexdigest()[:20]
+        self._resources[f"{token}:{kind}:{digest}"] = _Resource(url, time.monotonic())
+        return digest
 
     def _prune(self) -> None:
         """Drop expired allocations and resources."""
@@ -224,42 +267,149 @@ class TuyaStreamProxy:
 
     async def playlist(self, token: str) -> str | None:
         """Return a local playlist with all signed upstream URLs hidden."""
+        state = self._playlist_state.setdefault(token, _PlaylistState())
         allocation = await self._allocation(token)
         if allocation is None:
             return None
         fetched = await self._fetch(allocation.url)
+        forced = False
         if fetched is None:
+            forced = True
             allocation = await self._allocation(token, force=True)
             if allocation is None:
                 return None
             fetched = await self._fetch(allocation.url)
         if fetched is None:
             return None
+        # A reachable but frozen playlist has no new segments. Renew before
+        # FFmpeg consumes the remaining window and declares the stream ended.
+        if (
+            not forced
+            and state.last_new
+            and time.monotonic() - state.last_new > PLAYLIST_STALE_TIMEOUT
+        ):
+            allocation = await self._allocation(token, force=True)
+            if allocation is None:
+                return None
+            refreshed = await self._fetch(allocation.url)
+            if refreshed is None:
+                return None
+            fetched = refreshed
+            state.last_new = time.monotonic()
+
+        # Parse Tuya's media playlist into logical segments. Each segment keeps
+        # the local URL it was first advertised with, even when a later renewal
+        # replaces the signed upstream URL. That keeps FFmpeg's playlist cache
+        # consistent and avoids reloading already-played segments.
         text = fetched[0].decode("utf-8", "replace")
-        # Tuya delivers a media playlist with relative .ts segments and an
-        # AES-128 key URI. Master playlists and EXT-X-MAP are not expected.
-        lines: list[str] = []
+        target_duration = 3
+        key_line = ""
+        duration = "2"
+        discontinuity = False
+        candidates: list[tuple[str, str, str, bool]] = []
         for raw in text.splitlines():
             line = raw.strip()
             if not line:
                 continue
-            if line.startswith("#EXT-X-KEY:"):
+            if line.startswith("#EXT-X-TARGETDURATION:"):
+                try:
+                    target_duration = int(line.split(":", 1)[1])
+                except ValueError:
+                    target_duration = 3
+            elif line.startswith("#EXT-X-KEY:"):
 
                 def rewrite(match: re.Match[str]) -> str:
                     key_url = urljoin(allocation.url, match.group(2))
-                    key_id = self._store(token, "key", key_url)
+                    key_id = self._store(token, "key", key_url, f"key:{state.next_id}")
+                    state.next_id += 1
                     return (
                         f"{match.group(1)}"
                         f"{self._resource_url(token, 'key', key_id)}"
                         f"{match.group(3)}"
                     )
 
-                line = _KEY_URI_RE.sub(rewrite, line)
+                key_line = _KEY_URI_RE.sub(rewrite, line)
+            elif line.startswith("#EXT-X-DISCONTINUITY"):
+                discontinuity = True
+            elif line.startswith("#EXTINF:"):
+                duration = line.split(":", 1)[1].split(",", 1)[0] or "2"
             elif not line.startswith("#"):
-                segment_url = urljoin(allocation.url, line)
-                segment_id = self._store(token, "segment", segment_url)
-                line = self._resource_url(token, "segment", segment_id)
-            lines.append(line)
+                candidates.append(
+                    (urljoin(allocation.url, line), duration, key_line, discontinuity)
+                )
+                duration = "2"
+                discontinuity = False
+
+        generation_changed = state.generation != allocation.generation
+        fresh: list[tuple[tuple[int, str], _Segment]] = []
+        for url, item_duration, item_key_line, item_discontinuity in candidates:
+            identity = (allocation.generation, url)
+            # Tuya keeps old segments in the growing list. Once a segment has
+            # left our window it must not reappear as a "new" one later.
+            if identity in state.known:
+                continue
+            state.next_id += 1
+            segment = _Segment(
+                generation=allocation.generation,
+                url=url,
+                resource_id=self._store(
+                    token, "segment", url, f"segment:{state.next_id}"
+                ),
+                key_line=item_key_line,
+                duration=item_duration,
+                discontinuity=item_discontinuity,
+            )
+            if generation_changed and not fresh and state.segments:
+                segment = replace(segment, discontinuity=True)
+            fresh.append((identity, segment))
+
+        if generation_changed:
+            # Keep already advertised segments at their original sequences and
+            # introduce only one segment of the new session per refresh.
+            keep_old = [
+                item for item in state.segments if item.generation == state.generation
+            ][-(PLAYLIST_WINDOW - 1) :]
+            dropped = len(state.segments) - len(keep_old)
+            selected = fresh[: max(0, PLAYLIST_WINDOW - len(keep_old))]
+            state.sequence += dropped
+            state.segments = keep_old + [segment for _, segment in selected]
+            state.known = {
+                identity
+                for identity in state.known
+                if identity[0] == allocation.generation
+            }
+            state.known.update(identity for identity, _ in selected)
+        else:
+            combined = state.segments + [segment for _, segment in fresh]
+            dropped = max(0, len(combined) - PLAYLIST_WINDOW)
+            state.sequence += dropped
+            state.segments = combined[dropped:]
+            state.known.update(identity for identity, _ in fresh)
+
+        state.target_duration = target_duration
+        state.generation = allocation.generation
+        if fresh:
+            state.last_new = time.monotonic()
+
+        first_generation = (
+            state.segments[0].generation if state.segments else state.generation
+        )
+        lines = [
+            "#EXTM3U",
+            "#EXT-X-VERSION:6",
+            f"#EXT-X-TARGETDURATION:{state.target_duration}",
+            f"#EXT-X-MEDIA-SEQUENCE:{state.sequence}",
+            f"#EXT-X-DISCONTINUITY-SEQUENCE:{first_generation}",
+        ]
+        current_key = ""
+        for index, segment in enumerate(state.segments):
+            if segment.key_line and segment.key_line != current_key:
+                lines.append(segment.key_line)
+                current_key = segment.key_line
+            if index and segment.discontinuity:
+                lines.append("#EXT-X-DISCONTINUITY")
+            lines.append(f"#EXTINF:{segment.duration},")
+            lines.append(self._resource_url(token, "segment", segment.resource_id))
         self._prune()
         return "\n".join(lines) + "\n"
 
