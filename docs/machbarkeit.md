@@ -78,7 +78,7 @@ Die Live-Tests haben gezeigt, dass die `v1.0/devices`-Familie für verlinkte Ger
 4. **Entities**: Dynamisch aus `functions`/`status` + DPS-Codes. Plattformen: Switch, Sensor, Light, Climate, Cover, Number, Camera; zusätzliche Shadow-Sensoren aus dem IoT-Core-Thing-Shadow. Entity-Descriptions mit `device_class`, `native_unit_of_measurement`, `EntityCategory`.
 5. **Geräte/Range**: `DeviceInfo` pro Tuya-Gerät mit `identifiers={(DOMAIN, device_id), ("tuya", device_id)}`; der zweite Identifier entspricht der gemeinsamen Tuya-Geräte-ID und wirkt ab HA 2026.8 bei „Verknüpfte Geräte“. Auf älteren HA-Versionen kann er Registry-Einträge verschiedener Tuya-Integrationen zusammenführen. Child Devices wo zutreffend.
 6. **Diagnostics/Repairs**: Redaction von Tokens, Secrets, DPS-Werten mit personenbezogenen Daten; Repairs für Auth-Fehler, falsche Region, fehlende API-Autorisierung.
-7. **Tests**: `pytest-homeassistant-custom-component`, Zwischenstand 0.1.0: 36 Tests grün, 84 % Gesamt-Coverage; Stand 0.4.3: 205 Tests grün, `ruff check`/`format` sauber (0.4.1: 183, 0.4.0: 179, 0.3.1: 169). Config-Flow, Coordinator, Entity-Mapping, Kamera, Redaction, Fehlerpfade.
+7. **Tests**: `pytest-homeassistant-custom-component`, Zwischenstand 0.1.0: 36 Tests grün, 84 % Gesamt-Coverage; Stand 0.4.3: 207 Tests grün, `ruff check`/`format` sauber (0.4.1: 183, 0.4.0: 179, 0.3.1: 169). Config-Flow, Coordinator, Entity-Mapping, Kamera, Redaction, Fehlerpfade.
 
 ## 8. Live-Beweis (2026-11-27) – Important rule erfüllt
 
@@ -118,7 +118,7 @@ Der Befehl war wieder **idempotent** (exakt der gelesene Wert wurde zurückgesch
 
 | Prüfung | Ergebnis |
 |---|---|
-| Unit-Tests (Python 3.14, `pytest-homeassistant-custom-component`) | **205 passed** (Stand 0.4.3; 183 in 0.4.1, 179 in 0.4.0, 169 in 0.3.1) |
+| Unit-Tests (Python 3.14, `pytest-homeassistant-custom-component`) | **207 passed** (Stand 0.4.3; 183 in 0.4.1, 179 in 0.4.0, 169 in 0.3.1) |
 | `ruff check` / `ruff format --check` | **All checks passed** / sauber |
 | Live-Smoke-Test des eigenen Clients | **Erfolg** (siehe oben) |
 | Live-Probe Shadow/Stream des eigenen Clients | **Erfolg** (8 Geräte, 23 DPS, HLS-Allokation; siehe Abschnitt 11) |

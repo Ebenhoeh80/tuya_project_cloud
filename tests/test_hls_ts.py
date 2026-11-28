@@ -92,6 +92,14 @@ def test_padding_packets_without_pes_header_are_ignored() -> None:
     assert shift(data, _TICK) == data
 
 
+def test_shift_preserves_pcr_reserved_bits() -> None:
+    data = bytes(_packet(pcr=_TICK, dts=_TICK))
+    result = shift(data, 30 * _TICK)
+    assert data[10] & 0x7E == 0x7E
+    assert result[10] & 0x7E == 0x7E
+    assert timestamps(result) == (31 * _TICK, 31 * _TICK)
+
+
 def test_last_timestamp_compares_across_wraparound() -> None:
     data = bytes(_packet(pcr=(1 << 33) - _TICK, dts=(1 << 33) - 10 * _TICK))
     first, last = timestamps(shift(data, 2 * _TICK))

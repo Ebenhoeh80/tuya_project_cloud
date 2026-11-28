@@ -78,7 +78,8 @@ def _write_pcr(data: bytearray, offset: int, value: int) -> None:
     data[offset + 1] = (value >> 17) & 0xFF
     data[offset + 2] = (value >> 9) & 0xFF
     data[offset + 3] = (value >> 1) & 0xFF
-    data[offset + 4] = (data[offset + 4] & 0x01) | ((value & 0x01) << 7)
+    # Bits 6..1 are reserved and must stay set; bit 0 carries the extension flag.
+    data[offset + 4] = (data[offset + 4] & 0x01) | 0x7E | ((value & 0x01) << 7)
 
 
 def _pes_timestamp_positions(packet: bytes, index: int) -> tuple[int, ...]:
@@ -98,7 +99,7 @@ def _pes_timestamp_positions(packet: bytes, index: int) -> tuple[int, ...]:
     return ()
 
 
-def _is_later(value: int, previous: int) -> bool:
+def is_later(value: int, previous: int) -> bool:
     """Compare 33-bit timestamps across the wraparound boundary."""
     return ((value - previous) % _PTS_MODULO) < (_PTS_MODULO // 2)
 
@@ -142,7 +143,7 @@ def timestamps(data: bytes) -> tuple[int | None, int | None]:
         last_dts = value
     first = first_dts if first_dts is not None else first_pcr
     last = last_dts
-    if last_pcr is not None and (last is None or _is_later(last_pcr, last)):
+    if last_pcr is not None and (last is None or is_later(last_pcr, last)):
         last = last_pcr
     return first, last
 

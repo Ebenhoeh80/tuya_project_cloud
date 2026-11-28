@@ -26,6 +26,7 @@ from custom_components.tuya_project_cloud.stream_proxy import (
     TuyaPlaylistView,
     TuyaSegmentView,
     TuyaStreamProxy,
+    _SegmentMeta,
     async_register_stream_proxy,
 )
 
@@ -747,6 +748,30 @@ async def test_encrypted_segments_get_continuous_timestamps_across_allocations()
     assert first_last is not None and second_first is not None
     assert second_first > first_last
     assert second_first - first_last < 90000
+
+
+@pytest.mark.asyncio
+async def test_next_dts_wraps_across_33_bits() -> None:
+    """A new allocation after the PTS wrap must not reset to the old high value."""
+    proxy, token, _ = _proxy()
+    segment = _encrypted_segment(((1 << 33) - 2000) / 90000)
+    meta = _SegmentMeta(generation=1, key_url="key.bin", iv=bytes(range(16, 32)))
+
+    async def fake_fetch(url: str) -> tuple[bytes, dict[str, str]] | None:
+        if url == UPSTREAM:
+            return PLAYLIST.encode(), {}
+        return bytes(range(16)), {}
+
+    with patch.object(proxy, "_fetch", side_effect=fake_fetch):
+        await proxy.playlist(token)
+        state = proxy._playlist_state[token]
+        state.next_dts = 1000
+        state.rebased_generation = 0
+        _, cacheable = await proxy._rebase_segment(token, segment, meta)
+
+    assert cacheable
+    assert state.next_dts is not None
+    assert 0 <= state.next_dts < 100000
 
 
 @pytest.mark.asyncio

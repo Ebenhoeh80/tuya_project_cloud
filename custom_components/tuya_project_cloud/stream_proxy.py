@@ -25,7 +25,7 @@ from homeassistant.helpers.network import NoURLAvailableError, get_url
 
 from .api import TuyaApiError
 from .const import DOMAIN
-from .hls_ts import decrypt, encrypt, shift, timestamps
+from .hls_ts import decrypt, encrypt, is_later, shift, timestamps
 from .utils import redact_identifier
 
 if TYPE_CHECKING:
@@ -83,11 +83,9 @@ class _PlaylistState:
     known: set[tuple[int, str]] = field(default_factory=set)
     text: str = ""
     pending_discontinuity: bool = False
-    timestamp_offset: int = 0
     next_dts: int | None = None
     rebased_generation: int = 0
     offsets: dict[int, int] = field(default_factory=dict)
-    generation_next: dict[int, int] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -540,15 +538,12 @@ class TuyaStreamProxy:
                 offset = state.next_dts - first if state.next_dts is not None else 0
                 state.offsets[meta.generation] = offset
             patched = shift(clear, offset)
-            state.timestamp_offset = offset
             state.rebased_generation = max(meta.generation, state.rebased_generation)
             _, patched_last = timestamps(patched)
             if patched_last is not None:
-                advanced = patched_last + FRAME_TICKS
-                state.generation_next[meta.generation] = max(
-                    state.generation_next.get(meta.generation, 0), advanced
-                )
-                state.next_dts = max(state.next_dts or 0, advanced)
+                advanced = (patched_last + FRAME_TICKS) % (1 << 33)
+                if state.next_dts is None or is_later(advanced, state.next_dts):
+                    state.next_dts = advanced
         rewritten = encrypt(patched, key, meta.iv)
         if rewritten is None:
             return encrypted, False
